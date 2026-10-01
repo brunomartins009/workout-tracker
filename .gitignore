@@ -25,3 +25,6 @@ instance/*.sqlite3
 # Operating-system files
 .DS_Store
 Thumbs.db
+
+#
+.tmp/
