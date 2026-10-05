@@ -12,6 +12,7 @@ def create_app(test_config=None):
     default_database_path = Path(app.instance_path) / "workout_tracker.db"
     app.config.from_mapping(
         DATABASE_URL=f"sqlite:///{default_database_path.as_posix()}",
+        SECRET_KEY="development-only-secret-key",
     )
 
     if test_config is not None:
@@ -25,5 +26,9 @@ def create_app(test_config=None):
 
     with app.app_context():
         db.create_all()
+
+    from app.routes.exercises import bp as exercises_bp
+
+    app.register_blueprint(exercises_bp)
 
     return app

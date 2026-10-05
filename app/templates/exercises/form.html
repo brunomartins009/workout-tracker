@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% if exercise is not none and exercise.id is not none %}
+  {% set page_title = "Editar exercício" %}
+  {% set submit_label = "Salvar alterações" %}
+  {% set action_url = url_for('exercises.update_exercise', exercise_id=exercise.id) %}
+{% else %}
+  {% set page_title = "Novo exercício" %}
+  {% set submit_label = "Salvar exercício" %}
+  {% set action_url = url_for('exercises.create_exercise') %}
+{% endif %}
+
+{% block title %}{{ page_title }} | Workout Tracker{% endblock %}
+
+{% block content %}
+  <h1>{{ page_title }}</h1>
+
+  {% if error %}
+    <p class="error" role="alert">{{ error }}</p>
+  {% endif %}
+
+  <form action="{{ action_url }}" method="post">
+    <p>
+      <label for="name">Nome do exercício</label>
+      <input id="name" name="name" type="text" value="{{ exercise.name if exercise is not none and exercise.name else '' }}" required autofocus>
+    </p>
+    <button type="submit">{{ submit_label }}</button>
+  </form>
+
+  <p><a href="{{ url_for('exercises.list_exercises') }}">Voltar para a lista</a></p>
+{% endblock %}

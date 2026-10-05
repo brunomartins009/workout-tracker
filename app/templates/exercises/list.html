@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block title %}Exercícios | Workout Tracker{% endblock %}
+
+{% block content %}
+  <header>
+    <h1>Exercícios</h1>
+    <a href="{{ url_for('exercises.new_exercise') }}">Novo exercício</a>
+  </header>
+
+  {% if exercises %}
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Nome</th>
+          <th scope="col">Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for exercise in exercises %}
+          <tr>
+            <td>{{ exercise.name }}</td>
+            <td>
+              <a href="{{ url_for('exercises.edit_exercise', exercise_id=exercise.id) }}">Editar</a>
+              <form action="{{ url_for('exercises.delete_exercise', exercise_id=exercise.id) }}" method="post">
+                <button type="submit">Excluir</button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p>Nenhum exercício cadastrado.</p>
+  {% endif %}
+{% endblock %}

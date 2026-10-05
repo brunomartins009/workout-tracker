@@ -19,3 +19,8 @@ def app(tmp_path):
 @pytest.fixture
 def session(app):
     return db.session
+
+
+@pytest.fixture
+def client(app):
+    return app.test_client()
