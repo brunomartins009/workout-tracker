@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block title %}Treinos | Workout Tracker{% endblock %}
+
+{% block content %}
+  <header>
+    <h1>Treinos</h1>
+    <a href="{{ url_for('workouts.new_workout') }}">Novo treino</a>
+  </header>
+
+  {% if workouts %}
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Data</th>
+          <th scope="col">Nome</th>
+          <th scope="col">Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for workout in workouts %}
+          <tr>
+            <td>{{ workout.date.strftime('%d/%m/%Y') }}</td>
+            <td>{{ workout.name }}</td>
+            <td>
+              <a href="{{ url_for('workouts.edit_workout', workout_id=workout.id) }}">Editar</a>
+              <form action="{{ url_for('workouts.delete_workout', workout_id=workout.id) }}" method="post">
+                <button type="submit">Excluir</button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p>Nenhum treino cadastrado.</p>
+  {% endif %}
+{% endblock %}

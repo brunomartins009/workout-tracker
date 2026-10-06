@@ -28,7 +28,9 @@ def create_app(test_config=None):
         db.create_all()
 
     from app.routes.exercises import bp as exercises_bp
+    from app.routes.workouts import bp as workouts_bp
 
     app.register_blueprint(exercises_bp)
+    app.register_blueprint(workouts_bp)
 
     return app
