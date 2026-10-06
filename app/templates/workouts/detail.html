@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block title %}{{ workout.name }} | Workout Tracker{% endblock %}
+
+{% block content %}
+  <header>
+    <div>
+      <h1>{{ workout.name }}</h1>
+      <p>{{ workout.date.strftime('%d/%m/%Y') }}</p>
+    </div>
+    <a href="{{ url_for('workouts.edit_workout', workout_id=workout.id) }}">Editar treino</a>
+  </header>
+
+  <section>
+    <h2>Exercícios</h2>
+
+    {% if workout_exercises %}
+      <ol>
+        {% for workout_exercise in workout_exercises %}
+          <li>
+            {{ workout_exercise.exercise.name }}
+            {% if not loop.first %}
+              <form action="{{ url_for('workouts.move_workout_exercise_up', workout_id=workout.id, exercise_id=workout_exercise.exercise_id) }}" method="post">
+                <button type="submit" aria-label="Mover {{ workout_exercise.exercise.name }} para cima">↑</button>
+              </form>
+            {% endif %}
+            {% if not loop.last %}
+              <form action="{{ url_for('workouts.move_workout_exercise_down', workout_id=workout.id, exercise_id=workout_exercise.exercise_id) }}" method="post">
+                <button type="submit" aria-label="Mover {{ workout_exercise.exercise.name }} para baixo">↓</button>
+              </form>
+            {% endif %}
+            <form action="{{ url_for('workouts.delete_workout_exercise', workout_id=workout.id, exercise_id=workout_exercise.exercise_id) }}" method="post">
+              <button type="submit">Remover</button>
+            </form>
+          </li>
+        {% endfor %}
+      </ol>
+    {% else %}
+      <p>Nenhum exercício adicionado a este treino.</p>
+    {% endif %}
+  </section>
+
+  <section>
+    <h2>Adicionar exercício</h2>
+    {% if exercises %}
+      <form action="{{ url_for('workouts.add_workout_exercise', workout_id=workout.id) }}" method="post">
+        <label for="exercise_id">Exercício</label>
+        <select id="exercise_id" name="exercise_id" required>
+          {% for exercise in exercises %}
+            <option value="{{ exercise.id }}">{{ exercise.name }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit">Adicionar</button>
+      </form>
+    {% else %}
+      <p>Cadastre um exercício antes de adicioná-lo ao treino.</p>
+    {% endif %}
+  </section>
+
+  <p><a href="{{ url_for('workouts.list_workouts') }}">Voltar para treinos</a></p>
+{% endblock %}
