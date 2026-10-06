@@ -1,12 +1,13 @@
 from datetime import date
+from decimal import Decimal, InvalidOperation
 
 from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, selectinload
 
 from app.database import db
-from app.models import Exercise, Workout, WorkoutExercise
+from app.models import Exercise, Workout, WorkoutExercise, WorkoutSet
 
 
 bp = Blueprint("workouts", __name__, url_prefix="/workouts")
@@ -23,14 +24,7 @@ def list_workouts():
 @bp.get("/<int:workout_id>")
 def workout_detail(workout_id):
     workout = _get_workout_or_404(workout_id)
-    workout_exercises = _workout_exercises(workout_id)
-    exercises = db.session.scalars(select(Exercise).order_by(Exercise.name)).all()
-    return render_template(
-        "workouts/detail.html",
-        workout=workout,
-        workout_exercises=workout_exercises,
-        exercises=exercises,
-    )
+    return _render_workout_detail(workout)
 
 
 @bp.get("/new")
@@ -198,6 +192,120 @@ def move_workout_exercise_down(workout_id, exercise_id):
     return redirect(url_for("workouts.workout_detail", workout_id=workout_id))
 
 
+@bp.post("/<int:workout_id>/exercises/<int:exercise_id>/sets")
+def add_workout_set(workout_id, exercise_id):
+    workout = _get_workout_or_404(workout_id)
+    workout_exercise = _get_workout_exercise_or_404(workout_id, exercise_id)
+    repetitions, weight_kg = _set_form_values()
+
+    try:
+        last_position = db.session.scalar(
+            select(func.max(WorkoutSet.position)).where(
+                WorkoutSet.workout_exercise_id == workout_exercise.id
+            )
+        )
+        workout_set = WorkoutSet(
+            workout_exercise_id=workout_exercise.id,
+            position=(last_position or 0) + 1,
+            repetitions=int(repetitions),
+            weight_kg=Decimal(weight_kg),
+        )
+        db.session.add(workout_set)
+        db.session.commit()
+    except (InvalidOperation, ValueError):
+        db.session.rollback()
+        return _render_workout_detail(
+            workout,
+            set_error="Informe repetições positivas e um peso válido com até duas casas decimais.",
+            set_form_values={"repetitions": repetitions, "weight_kg": weight_kg},
+        )
+    except IntegrityError:
+        db.session.rollback()
+        return _render_workout_detail(
+            workout,
+            set_error="Não foi possível adicionar a série. Tente novamente.",
+            set_form_values={"repetitions": repetitions, "weight_kg": weight_kg},
+        )
+
+    flash("Série adicionada com sucesso.")
+    return redirect(url_for("workouts.workout_detail", workout_id=workout_id))
+
+
+@bp.get("/<int:workout_id>/exercises/<int:exercise_id>/sets/<int:set_id>/edit")
+def edit_workout_set(workout_id, exercise_id, set_id):
+    workout = _get_workout_or_404(workout_id)
+    workout_exercise = _get_workout_exercise_or_404(workout_id, exercise_id)
+    workout_set = _get_workout_set_or_404(workout_exercise.id, set_id)
+    return render_template(
+        "workouts/set_form.html",
+        workout=workout,
+        workout_exercise=workout_exercise,
+        workout_set=workout_set,
+        form_repetitions=workout_set.repetitions,
+        form_weight_kg=workout_set.weight_kg,
+    )
+
+
+@bp.post("/<int:workout_id>/exercises/<int:exercise_id>/sets/<int:set_id>/edit")
+def update_workout_set(workout_id, exercise_id, set_id):
+    workout = _get_workout_or_404(workout_id)
+    workout_exercise = _get_workout_exercise_or_404(workout_id, exercise_id)
+    workout_set = _get_workout_set_or_404(workout_exercise.id, set_id)
+    repetitions, weight_kg = _set_form_values()
+
+    try:
+        workout_set.repetitions = int(repetitions)
+        workout_set.weight_kg = Decimal(weight_kg)
+        db.session.commit()
+    except (InvalidOperation, ValueError):
+        db.session.rollback()
+        return _render_set_form_with_error(
+            workout,
+            workout_exercise,
+            workout_set,
+            repetitions,
+            weight_kg,
+        )
+    except IntegrityError:
+        db.session.rollback()
+        return _render_set_form_with_error(
+            workout,
+            workout_exercise,
+            workout_set,
+            repetitions,
+            weight_kg,
+        )
+
+    flash("Série atualizada com sucesso.")
+    return redirect(url_for("workouts.workout_detail", workout_id=workout_id))
+
+
+@bp.post("/<int:workout_id>/exercises/<int:exercise_id>/sets/<int:set_id>/delete")
+def delete_workout_set(workout_id, exercise_id, set_id):
+    _get_workout_or_404(workout_id)
+    workout_exercise = _get_workout_exercise_or_404(workout_id, exercise_id)
+    workout_set = _get_workout_set_or_404(workout_exercise.id, set_id)
+    removed_position = workout_set.position
+    db.session.delete(workout_set)
+    db.session.flush()
+
+    following_sets = db.session.scalars(
+        select(WorkoutSet)
+        .where(
+            WorkoutSet.workout_exercise_id == workout_exercise.id,
+            WorkoutSet.position > removed_position,
+        )
+        .order_by(WorkoutSet.position)
+    ).all()
+    for following_set in following_sets:
+        following_set.position -= 1
+        db.session.flush()
+
+    db.session.commit()
+    flash("Série excluída com sucesso.")
+    return redirect(url_for("workouts.workout_detail", workout_id=workout_id))
+
+
 def _get_workout_or_404(workout_id):
     workout = db.session.get(Workout, workout_id)
     if workout is None:
@@ -217,10 +325,25 @@ def _get_workout_exercise_or_404(workout_id, exercise_id):
     return workout_exercise
 
 
+def _get_workout_set_or_404(workout_exercise_id, set_id):
+    workout_set = db.session.scalar(
+        select(WorkoutSet).where(
+            WorkoutSet.id == set_id,
+            WorkoutSet.workout_exercise_id == workout_exercise_id,
+        )
+    )
+    if workout_set is None:
+        abort(404)
+    return workout_set
+
+
 def _workout_exercises(workout_id):
     return db.session.scalars(
         select(WorkoutExercise)
-        .options(joinedload(WorkoutExercise.exercise))
+        .options(
+            joinedload(WorkoutExercise.exercise),
+            selectinload(WorkoutExercise.sets),
+        )
         .where(WorkoutExercise.workout_id == workout_id)
         .order_by(WorkoutExercise.position)
     ).all()
@@ -240,6 +363,40 @@ def _swap_positions(workout_exercise, neighbor_exercise, workout_id):
     neighbor_exercise.position = original_position
     db.session.flush()
     workout_exercise.position = neighbor_original_position
+
+
+def _render_workout_detail(workout, set_error=None, set_form_values=None):
+    exercises = db.session.scalars(select(Exercise).order_by(Exercise.name)).all()
+    return render_template(
+        "workouts/detail.html",
+        workout=workout,
+        workout_exercises=_workout_exercises(workout.id),
+        exercises=exercises,
+        set_error=set_error,
+        set_form_values=set_form_values or {},
+    )
+
+
+def _set_form_values():
+    return request.form.get("repetitions", ""), request.form.get("weight_kg", "")
+
+
+def _render_set_form_with_error(
+    workout,
+    workout_exercise,
+    workout_set,
+    repetitions,
+    weight_kg,
+):
+    return render_template(
+        "workouts/set_form.html",
+        workout=workout,
+        workout_exercise=workout_exercise,
+        workout_set=workout_set,
+        form_repetitions=repetitions,
+        form_weight_kg=weight_kg,
+        error="Informe repetições positivas e um peso válido com até duas casas decimais.",
+    ), 200
 
 
 def _form_values():

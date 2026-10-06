@@ -32,6 +32,37 @@
             <form action="{{ url_for('workouts.delete_workout_exercise', workout_id=workout.id, exercise_id=workout_exercise.exercise_id) }}" method="post">
               <button type="submit">Remover</button>
             </form>
+
+            <div>
+              <h3>Séries</h3>
+              {% set ordered_sets = workout_exercise.sets|sort(attribute='position') %}
+              {% if ordered_sets %}
+                <ol>
+                  {% for workout_set in ordered_sets %}
+                    <li>
+                      Série {{ workout_set.position }}: {{ workout_set.repetitions }} reps, {{ workout_set.weight_kg }} kg
+                      <a href="{{ url_for('workouts.edit_workout_set', workout_id=workout.id, exercise_id=workout_exercise.exercise_id, set_id=workout_set.id) }}">Editar</a>
+                      <form action="{{ url_for('workouts.delete_workout_set', workout_id=workout.id, exercise_id=workout_exercise.exercise_id, set_id=workout_set.id) }}" method="post">
+                        <button type="submit">Excluir</button>
+                      </form>
+                    </li>
+                  {% endfor %}
+                </ol>
+              {% else %}
+                <p>Nenhuma série registrada.</p>
+              {% endif %}
+
+              {% if set_error %}
+                <p class="error" role="alert">{{ set_error }}</p>
+              {% endif %}
+              <form action="{{ url_for('workouts.add_workout_set', workout_id=workout.id, exercise_id=workout_exercise.exercise_id) }}" method="post">
+                <label for="repetitions-{{ workout_exercise.id }}">Repetições</label>
+                <input id="repetitions-{{ workout_exercise.id }}" name="repetitions" type="number" min="1" value="{{ set_form_values.get('repetitions', '') }}" required>
+                <label for="weight-{{ workout_exercise.id }}">Peso (kg)</label>
+                <input id="weight-{{ workout_exercise.id }}" name="weight_kg" type="number" min="0" step="0.01" value="{{ set_form_values.get('weight_kg', '') }}" required>
+                <button type="submit">Adicionar série</button>
+              </form>
+            </div>
           </li>
         {% endfor %}
       </ol>

@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block title %}Editar série | Workout Tracker{% endblock %}
+
+{% block content %}
+  <h1>Editar série</h1>
+  <p>{{ workout.name }} — {{ workout_exercise.exercise.name }}</p>
+
+  {% if error %}
+    <p class="error" role="alert">{{ error }}</p>
+  {% endif %}
+
+  <form action="{{ url_for('workouts.update_workout_set', workout_id=workout.id, exercise_id=workout_exercise.exercise_id, set_id=workout_set.id) }}" method="post">
+    <p>
+      <label for="repetitions">Repetições</label>
+      <input id="repetitions" name="repetitions" type="number" min="1" value="{{ form_repetitions }}" required autofocus>
+    </p>
+    <p>
+      <label for="weight_kg">Peso (kg)</label>
+      <input id="weight_kg" name="weight_kg" type="number" min="0" step="0.01" value="{{ form_weight_kg }}" required>
+    </p>
+    <button type="submit">Salvar alterações</button>
+  </form>
+
+  <p><a href="{{ url_for('workouts.workout_detail', workout_id=workout.id) }}">Voltar para o treino</a></p>
+{% endblock %}
