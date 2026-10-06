@@ -8,20 +8,24 @@
     <a href="{{ url_for('workouts.new_workout') }}">Novo treino</a>
   </header>
 
-  {% if workouts %}
+  {% if workout_rows %}
     <table>
       <thead>
         <tr>
           <th scope="col">Data</th>
           <th scope="col">Nome</th>
+          <th scope="col">Exercícios</th>
+          <th scope="col">Séries</th>
           <th scope="col">Ações</th>
         </tr>
       </thead>
       <tbody>
-        {% for workout in workouts %}
-          <tr>
+        {% for workout, exercise_count, set_count in workout_rows %}
+          <tr id="workout-{{ workout.id }}">
             <td>{{ workout.date.strftime('%d/%m/%Y') }}</td>
-            <td>{{ workout.name }}</td>
+            <td><a href="{{ url_for('workouts.workout_detail', workout_id=workout.id) }}">{{ workout.name }}</a></td>
+            <td class="exercise-count">{{ exercise_count }}</td>
+            <td class="set-count">{{ set_count }}</td>
             <td>
               <a href="{{ url_for('workouts.workout_detail', workout_id=workout.id) }}">Ver treino</a>
               <a href="{{ url_for('workouts.edit_workout', workout_id=workout.id) }}">Editar</a>

@@ -12,6 +12,16 @@
   </header>
 
   <section>
+    <h2>Resumo</h2>
+    <dl>
+      <dt>Exercícios</dt>
+      <dd class="exercise-count">{{ workout_exercises|length }}</dd>
+      <dt>Séries</dt>
+      <dd class="set-count">{{ total_sets }}</dd>
+    </dl>
+  </section>
+
+  <section>
     <h2>Exercícios</h2>
 
     {% if workout_exercises %}

@@ -15,10 +15,22 @@ bp = Blueprint("workouts", __name__, url_prefix="/workouts")
 
 @bp.get("")
 def list_workouts():
-    workouts = db.session.scalars(
-        select(Workout).order_by(Workout.date.desc(), Workout.id.desc())
+    # A single aggregate query returns each workout with its counts, so the
+    # history page does not issue one extra query per workout (N+1).
+    # The outer joins keep workouts that have no exercises or no sets; DISTINCT
+    # is needed because joining sets repeats each exercise once per set.
+    workout_rows = db.session.execute(
+        select(
+            Workout,
+            func.count(func.distinct(WorkoutExercise.id)).label("exercise_count"),
+            func.count(WorkoutSet.id).label("set_count"),
+        )
+        .outerjoin(WorkoutExercise, WorkoutExercise.workout_id == Workout.id)
+        .outerjoin(WorkoutSet, WorkoutSet.workout_exercise_id == WorkoutExercise.id)
+        .group_by(Workout.id)
+        .order_by(Workout.date.desc(), Workout.id.desc())
     ).all()
-    return render_template("workouts/list.html", workouts=workouts)
+    return render_template("workouts/list.html", workout_rows=workout_rows)
 
 
 @bp.get("/<int:workout_id>")
@@ -367,10 +379,14 @@ def _swap_positions(workout_exercise, neighbor_exercise, workout_id):
 
 def _render_workout_detail(workout, set_error=None, set_form_values=None):
     exercises = db.session.scalars(select(Exercise).order_by(Exercise.name)).all()
+    workout_exercises = _workout_exercises(workout.id)
+    # Sets are already loaded by selectinload, so counting them here adds no queries.
+    total_sets = sum(len(workout_exercise.sets) for workout_exercise in workout_exercises)
     return render_template(
         "workouts/detail.html",
         workout=workout,
-        workout_exercises=_workout_exercises(workout.id),
+        workout_exercises=workout_exercises,
+        total_sets=total_sets,
         exercises=exercises,
         set_error=set_error,
         set_form_values=set_form_values or {},

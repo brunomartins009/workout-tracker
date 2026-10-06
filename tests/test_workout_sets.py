@@ -69,6 +69,29 @@ def test_detail_shows_empty_state_for_exercise_without_sets(client, session):
     assert f"repetitions-{workout_exercise.id}".encode() in response.data
 
 
+def test_detail_shows_add_set_form_for_each_exercise(client, session):
+    workout = create_workout(session)
+    first_exercise, _ = create_workout_exercise(session, workout, name="Supino")
+    second_exercise = Exercise(name="Remada")
+    session.add_all(
+        [
+            second_exercise,
+            WorkoutExercise(workout=workout, exercise=second_exercise, position=2),
+        ]
+    )
+    session.commit()
+
+    response = client.get(f"/workouts/{workout.id}")
+    page = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    for exercise in (first_exercise, second_exercise):
+        assert f'action="/workouts/{workout.id}/exercises/{exercise.id}/sets"' in page
+    assert page.count('name="repetitions"') == 2
+    assert page.count('name="weight_kg"') == 2
+    assert 'name="position"' not in page
+
+
 def test_detail_for_nonexistent_workout_returns_404(client):
     response = client.get("/workouts/999")
 
