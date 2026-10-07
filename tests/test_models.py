@@ -43,6 +43,31 @@ def test_creates_exercise_and_normalizes_its_name(session):
     assert exercise.name == "Supino reto"
 
 
+def test_exercise_stores_muscle_group_and_subgroup(session):
+    exercise = Exercise(name="Supino inclinado", muscle_group="  Peito ", muscle_subgroup=" Peitoral clavicular ")
+    session.add(exercise)
+    session.commit()
+
+    session.expire_all()
+    stored = session.get(Exercise, exercise.id)
+    assert stored.muscle_group == "Peito"
+    assert stored.muscle_subgroup == "Peitoral clavicular"
+
+
+def test_exercise_without_classification_is_marked_unclassified(session):
+    exercise = create_exercise(session, "Exercício novo")
+
+    assert exercise.muscle_group == "XXXXX"
+    assert exercise.muscle_subgroup == "XXXXX"
+
+
+@pytest.mark.parametrize("field", ["muscle_group", "muscle_subgroup"])
+@pytest.mark.parametrize("value", ["", "   "])
+def test_exercise_rejects_empty_muscle_classification(field, value):
+    with pytest.raises(ValueError, match=f"{field} cannot be empty"):
+        Exercise(name="Supino reto", **{field: value})
+
+
 def test_exercise_name_is_unique_case_insensitively(session):
     create_exercise(session, "Supino reto")
     session.add(Exercise(name=" supino reto "))

@@ -27,7 +27,6 @@ def add_exercise(session, workout, name, position):
         ("/workouts", 'href="/workouts" aria-current="page">Treinos</a>'),
         ("/workouts/new", 'href="/workouts" aria-current="page">Treinos</a>'),
         ("/exercises", 'href="/exercises" aria-current="page">Exercícios</a>'),
-        ("/exercises/new", 'href="/exercises" aria-current="page">Exercícios</a>'),
     ],
 )
 def test_navigation_links_to_both_areas_and_marks_current_area(client, url, current_link):
@@ -40,27 +39,25 @@ def test_navigation_links_to_both_areas_and_marks_current_area(client, url, curr
     assert page.count('aria-current="page"') == 1
 
 
-def test_list_pages_show_primary_actions(client):
+def test_workout_list_shows_primary_action(client):
     workouts_page = client.get("/workouts").get_data(as_text=True)
-    exercises_page = client.get("/exercises").get_data(as_text=True)
 
     assert "+ Novo treino" in workouts_page
-    assert "+ Novo exercício" in exercises_page
 
 
-def test_empty_states_offer_next_action(client):
+def test_empty_workout_list_offers_next_action(client):
     workouts_page = client.get("/workouts").get_data(as_text=True)
-    exercises_page = client.get("/exercises").get_data(as_text=True)
 
     assert "Registrar primeiro treino" in workouts_page
-    assert "Cadastrar primeiro exercício" in exercises_page
 
 
 def test_success_flash_is_rendered_as_status_message(client):
-    response = client.post("/exercises", data={"name": "Supino"}, follow_redirects=True)
+    response = client.post(
+        "/workouts", data={"date": "2026-10-06", "name": "Push"}, follow_redirects=True
+    )
 
     assert (
-        '<li class="alert alert-success" role="status">Exercício criado com sucesso.</li>'
+        '<li class="alert alert-success" role="status">Treino criado com sucesso.</li>'
         in response.get_data(as_text=True)
     )
 
@@ -69,11 +66,15 @@ def test_error_flash_is_rendered_as_alert(client, session):
     workout = create_workout(session)
     exercise, _ = add_exercise(session, workout, "Supino", position=1)
 
-    response = client.post(f"/exercises/{exercise.id}/delete", follow_redirects=True)
+    response = client.post(
+        f"/workouts/{workout.id}/exercises",
+        data={"exercise_id": exercise.id},
+        follow_redirects=True,
+    )
 
     assert (
         '<li class="alert alert-error" role="alert">'
-        "Este exercício não pode ser excluído porque possui histórico de treino.</li>"
+        "Este exercício já foi adicionado ao treino.</li>"
         in response.get_data(as_text=True)
     )
 
@@ -134,14 +135,9 @@ def test_detail_shows_sets_table_headers_and_add_set_labels(client, session):
 
 def test_forms_offer_cancel_action(client, session):
     workout = create_workout(session)
-    exercise = Exercise(name="Supino")
-    session.add(exercise)
-    session.commit()
 
     new_workout_page = client.get("/workouts/new").get_data(as_text=True)
     edit_workout_page = client.get(f"/workouts/{workout.id}/edit").get_data(as_text=True)
-    edit_exercise_page = client.get(f"/exercises/{exercise.id}/edit").get_data(as_text=True)
 
     assert 'href="/workouts">Cancelar</a>' in new_workout_page
     assert f'href="/workouts/{workout.id}">Cancelar</a>' in edit_workout_page
-    assert 'href="/exercises">Cancelar</a>' in edit_exercise_page

@@ -7,6 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload, selectinload
 
 from app.database import db
+from app.exercise_library import group_exercises
 from app.models import Exercise, Workout, WorkoutExercise, WorkoutSet
 
 
@@ -385,7 +386,7 @@ def _render_workout_detail(
     set_form_values=None,
     failed_workout_exercise_id=None,
 ):
-    exercises = db.session.scalars(select(Exercise).order_by(Exercise.name)).all()
+    exercises = db.session.scalars(select(Exercise)).all()
     workout_exercises = _workout_exercises(workout.id)
     # Sets are already loaded by selectinload, so counting them here adds no queries.
     total_sets = sum(len(workout_exercise.sets) for workout_exercise in workout_exercises)
@@ -394,7 +395,7 @@ def _render_workout_detail(
         workout=workout,
         workout_exercises=workout_exercises,
         total_sets=total_sets,
-        exercises=exercises,
+        exercise_groups=group_exercises(exercises),
         set_error=set_error,
         set_form_values=set_form_values or {},
         # Lets the template show the error and the submitted values only under

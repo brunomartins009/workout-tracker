@@ -5,43 +5,39 @@
 {% block content %}
   <header class="page-header">
     <div>
-      <h1>Exercícios</h1>
-      <p class="page-subtitle">Sua biblioteca de exercícios para montar os treinos.</p>
+      <h1>Biblioteca de exercícios</h1>
+      <p class="page-subtitle">{{ exercise_count }} exercícios organizados por grupo muscular.</p>
     </div>
-    <a class="btn btn-primary" href="{{ url_for('exercises.new_exercise') }}">+ Novo exercício</a>
   </header>
 
-  {% if exercises %}
-    <div class="panel table-wrapper">
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th scope="col">Nome</th>
-            <th scope="col" class="row-actions"><span class="visually-hidden">Ações</span></th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for exercise in exercises %}
-            <tr>
-              <td>{{ exercise.name }}</td>
-              <td class="row-actions">
-                <div class="actions">
-                  <a class="btn btn-secondary btn-small" href="{{ url_for('exercises.edit_exercise', exercise_id=exercise.id) }}">Editar<span class="visually-hidden"> {{ exercise.name }}</span></a>
-                  <form class="inline-form" action="{{ url_for('exercises.delete_exercise', exercise_id=exercise.id) }}" method="post">
-                    <button class="btn btn-danger btn-small" type="submit">Excluir<span class="visually-hidden"> {{ exercise.name }}</span></button>
-                  </form>
-                </div>
-              </td>
-            </tr>
+  {% if exercise_groups %}
+    <nav class="group-index" aria-label="Grupos musculares">
+      {% for group, _subgroups in exercise_groups %}
+        <a href="#group-{{ loop.index }}">{{ group }}</a>
+      {% endfor %}
+    </nav>
+
+    {% for group, subgroups in exercise_groups %}
+      <section class="section library-group" id="group-{{ loop.index }}" aria-labelledby="group-{{ loop.index }}-title">
+        <h2 id="group-{{ loop.index }}-title" class="library-group-title{% if group == 'XXXXX' %} unclassified{% endif %}">{{ group }}</h2>
+        <div class="panel">
+          {% for subgroup, exercises in subgroups %}
+            <div class="library-subgroup">
+              <h3{% if subgroup == 'XXXXX' %} class="unclassified"{% endif %}>{{ subgroup }}</h3>
+              <ul class="library-exercises">
+                {% for exercise in exercises %}
+                  <li>{{ exercise.name }}</li>
+                {% endfor %}
+              </ul>
+            </div>
           {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    <p class="form-hint">Exercícios que já fazem parte de algum treino não podem ser excluídos.</p>
+        </div>
+      </section>
+    {% endfor %}
   {% else %}
     <div class="panel empty-state">
-      <p>Nenhum exercício cadastrado.</p>
-      <p><a class="btn btn-primary" href="{{ url_for('exercises.new_exercise') }}">Cadastrar primeiro exercício</a></p>
+      <p>Nenhum exercício na biblioteca.</p>
+      <p class="muted">A biblioteca é carregada com o comando <code>flask --app run sync-exercise-library</code>.</p>
     </div>
   {% endif %}
 {% endblock %}

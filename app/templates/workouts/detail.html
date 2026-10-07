@@ -144,22 +144,28 @@
 
   <section class="section panel panel-body" id="add-exercise">
     <h2>Adicionar exercício</h2>
-    {% if exercises %}
+    {% if exercise_groups %}
       <form class="add-exercise-form" action="{{ url_for('workouts.add_workout_exercise', workout_id=workout.id) }}" method="post">
         <div class="form-field">
           <label for="exercise_id">Exercício</label>
           <select id="exercise_id" name="exercise_id" required>
-            {% for exercise in exercises %}
-              <option value="{{ exercise.id }}">{{ exercise.name }}</option>
+            {% for group, subgroups in exercise_groups %}
+              <optgroup label="{{ group }}">
+                {% for subgroup, exercises in subgroups %}
+                  {% for exercise in exercises %}
+                    <option value="{{ exercise.id }}">{{ exercise.name }} — {{ subgroup }}</option>
+                  {% endfor %}
+                {% endfor %}
+              </optgroup>
             {% endfor %}
           </select>
         </div>
         <button class="btn btn-primary" type="submit">Adicionar</button>
       </form>
-      <p class="form-hint">Não encontrou o exercício? <a href="{{ url_for('exercises.new_exercise') }}">Cadastre-o na biblioteca</a>.</p>
+      <p class="form-hint">Os exercícios estão agrupados por grupo muscular. <a href="{{ url_for('exercises.list_exercises') }}">Ver biblioteca</a>.</p>
     {% else %}
-      <p class="muted">Cadastre um exercício antes de adicioná-lo ao treino.</p>
-      <p class="form-actions"><a class="btn btn-secondary" href="{{ url_for('exercises.new_exercise') }}">Cadastrar exercício</a></p>
+      <p class="muted">A biblioteca de exercícios está vazia.</p>
+      <p class="form-actions"><a class="btn btn-secondary" href="{{ url_for('exercises.list_exercises') }}">Ver biblioteca</a></p>
     {% endif %}
   </section>
 {% endblock %}

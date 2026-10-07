@@ -90,7 +90,9 @@ workout-tracker/
 ├── app/
 │   ├── __init__.py
 │   ├── database.py
+│   ├── exercise_library.py
 │   ├── models.py
+│   ├── schema.py
 │   ├── routes/
 │   │   ├── workouts.py
 │   │   └── exercises.py
@@ -137,7 +139,9 @@ The factory is responsible for:
 5. initializing the database extension;
 6. importing the models so they are registered in `Base.metadata`;
 7. creating the local database schema;
-8. returning the configured Flask application.
+8. adding columns that are missing from an existing database (`app/schema.py`);
+9. registering the `sync-exercise-library` CLI command;
+10. returning the configured Flask application.
 
 The application factory also allows tests to use an isolated database.
 
@@ -173,7 +177,13 @@ The application currently uses `Base.metadata.create_all()` to create the local 
 
 This is sufficient during the initial development stage.
 
-`create_all()` is not considered a migration system. If schema evolution becomes necessary while preserving existing production data, a migration solution such as Alembic may be introduced.
+`create_all()` is not considered a migration system: it creates missing tables but never changes existing ones.
+
+The local database already contains real workout data, so it must never be deleted or recreated to pick up a schema change.
+
+`app/schema.py` handles the additive changes made so far. On startup, right after `create_all()`, it adds model columns that are missing from an existing table using `ALTER TABLE ... ADD COLUMN` with a default value. This keeps every existing row, id and relationship, and does nothing when the column already exists.
+
+Only additive changes belong there. If a destructive change becomes necessary (renaming or dropping columns, changing types), a real migration tool such as Alembic should be introduced instead of extending `app/schema.py`.
 
 ---
 
@@ -205,16 +215,30 @@ Workout names are free text.
 
 ### Exercise
 
-Represents a reusable exercise in the exercise catalog.
+Represents a reusable exercise in the application's fixed exercise library.
 
 Main fields:
 
 ```text
 id
 name
+muscle_group
+muscle_subgroup
 created_at
 updated_at
 ```
+
+`muscle_group` and `muscle_subgroup` are plain text attributes. There are intentionally no separate tables for groups or subgroups.
+
+`XXXXX` marks a group or subgroup that has not been classified with confidence yet. It is stored as a real value so it remains visible in the library and can be corrected later.
+
+The library is controlled by the application, not by the user:
+
+* `app/exercise_library.py` contains the `EXERCISES` list, which is the source of truth;
+* `flask --app run sync-exercise-library` creates missing library exercises and updates the classification of existing ones;
+* the sync matches exercises by normalized name, never deletes exercises and never changes their ids;
+* the sync is not executed automatically on startup;
+* the UI only lists the library (`GET /exercises`) and lets the user pick exercises when building a workout. There are no routes to create, edit or delete exercises.
 
 Exercise names are normalized by trimming surrounding whitespace.
 

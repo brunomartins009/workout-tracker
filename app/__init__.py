@@ -24,8 +24,17 @@ def create_app(test_config=None):
     # Registers mapped models in Base.metadata before creating the local schema.
     from app import models  # noqa: F401
 
+    from app.schema import upgrade_schema
+
     with app.app_context():
         db.create_all()
+        # create_all() does not add new columns to existing tables; this adds
+        # them without touching existing rows.
+        upgrade_schema(db.engine)
+
+    from app.exercise_library import sync_exercise_library_command
+
+    app.cli.add_command(sync_exercise_library_command)
 
     from app.routes.exercises import bp as exercises_bp
     from app.routes.workouts import bp as workouts_bp

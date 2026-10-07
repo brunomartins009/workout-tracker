@@ -9,6 +9,11 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 from app.database import Base
 
 
+# Marks an exercise whose muscle group or subgroup has not been classified yet.
+# It is stored as a real value (not NULL) so it stays visible in the library.
+UNCLASSIFIED = "XXXXX"
+
+
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -37,6 +42,10 @@ class Exercise(TimestampMixin, Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(150), nullable=False)
+    # server_default mirrors the column definition used by app.schema when the
+    # column is added to an existing database.
+    muscle_group: Mapped[str] = mapped_column(String(100), nullable=False, default=UNCLASSIFIED, server_default=UNCLASSIFIED)
+    muscle_subgroup: Mapped[str] = mapped_column(String(100), nullable=False, default=UNCLASSIFIED, server_default=UNCLASSIFIED)
 
     __table_args__ = (
         Index("uq_exercises_normalized_name", func.lower(func.trim(name)), unique=True),
@@ -44,9 +53,9 @@ class Exercise(TimestampMixin, Base):
 
     workout_exercises: Mapped[list[WorkoutExercise]] = relationship(back_populates="exercise", passive_deletes="all")
 
-    @validates("name")
-    def validate_name(self, _key: str, value: str) -> str:
-        return _validate_required_name(value)
+    @validates("name", "muscle_group", "muscle_subgroup")
+    def validate_required_text(self, key: str, value: str) -> str:
+        return _validate_required_name(value, key)
 
 
 class WorkoutExercise(TimestampMixin, Base):
@@ -106,12 +115,12 @@ class WorkoutSet(TimestampMixin, Base):
         return weight
 
 
-def _validate_required_name(value: str) -> str:
+def _validate_required_name(value: str, field_name: str = "name") -> str:
     if not isinstance(value, str):
-        raise ValueError("name must be a string")
+        raise ValueError(f"{field_name} must be a string")
     normalized_value = value.strip()
     if not normalized_value:
-        raise ValueError("name cannot be empty")
+        raise ValueError(f"{field_name} cannot be empty")
     return normalized_value
 
 

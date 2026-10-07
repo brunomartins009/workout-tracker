@@ -1,3 +1,4 @@
+import re
 from datetime import date
 
 import pytest
@@ -5,140 +6,130 @@ import pytest
 from app.models import Exercise, Workout, WorkoutExercise
 
 
-def create_exercise(session, name="Supino reto"):
-    exercise = Exercise(name=name)
+def create_exercise(session, name, muscle_group="XXXXX", muscle_subgroup="XXXXX"):
+    exercise = Exercise(name=name, muscle_group=muscle_group, muscle_subgroup=muscle_subgroup)
     session.add(exercise)
     session.commit()
     return exercise
 
 
-def test_list_exercises_is_empty(client):
+def headings(page, level):
+    return re.findall(rf"<h{level}[^>]*>([^<]+)</h{level}>", page)
+
+
+def test_library_is_accessible_and_empty_state_is_shown(client):
     response = client.get("/exercises")
+    page = response.get_data(as_text=True)
 
     assert response.status_code == 200
-    assert b"Nenhum exerc\xc3\xadcio cadastrado." in response.data
+    assert "Biblioteca de exercícios" in page
+    assert "Nenhum exercício na biblioteca." in page
 
 
-def test_list_exercises_shows_registered_exercises(client, session):
-    create_exercise(session, "Remada curvada")
-    create_exercise(session, "Supino reto")
+def test_library_shows_exercises_with_group_and_subgroup(client, session):
+    create_exercise(session, "Supino inclinado", "Peito", "Peitoral clavicular")
+    create_exercise(session, "Cadeira extensora", "Pernas", "Quadríceps")
 
-    response = client.get("/exercises")
+    page = client.get("/exercises").get_data(as_text=True)
 
-    assert response.status_code == 200
-    assert b"Remada curvada" in response.data
-    assert b"Supino reto" in response.data
-
-
-def test_new_exercise_form_is_displayed(client):
-    response = client.get("/exercises/new")
-
-    assert response.status_code == 200
-    assert b"Nome do exerc\xc3\xadcio" in response.data
+    for text in ("Supino inclinado", "Cadeira extensora", "Peito", "Pernas", "Peitoral clavicular", "Quadríceps"):
+        assert text in page
 
 
-def test_creates_exercise(client, session):
+def test_library_groups_exercises_under_their_group_and_subgroup(client, session):
+    create_exercise(session, "Supino reto", "Peito", "Peitoral médio")
+    create_exercise(session, "Stiff", "Pernas", "Posteriores de coxa")
+    create_exercise(session, "Supino inclinado", "Peito", "Peitoral clavicular")
+
+    page = client.get("/exercises").get_data(as_text=True)
+    chest_section = page.split(">Peito</h2>")[1].split(">Pernas</h2>")[0]
+    legs_section = page.split(">Pernas</h2>")[1]
+
+    assert "Supino reto" in chest_section
+    assert "Supino inclinado" in chest_section
+    assert "Stiff" not in chest_section
+    assert "Stiff" in legs_section
+    assert chest_section.index("Peitoral clavicular") < chest_section.index("Supino inclinado")
+    assert chest_section.index("Peitoral médio") < chest_section.index("Supino reto")
+
+
+def test_library_orders_groups_subgroups_and_exercises_alphabetically(client, session):
+    create_exercise(session, "Leg press", "Pernas", "Quadríceps")
+    create_exercise(session, "Agachamento", "Pernas", "Quadríceps")
+    create_exercise(session, "Elevação lateral", "Ombros", "Deltoide lateral")
+    create_exercise(session, "Mesa flexora", "Pernas", "Posteriores de coxa")
+    create_exercise(session, "Abdominal curto", "Abdômen", "Reto abdominal")
+    create_exercise(session, "Encolhimento", "Ombros", "Deltoide lateral")
+
+    page = client.get("/exercises").get_data(as_text=True)
+    legs_section = page.split(">Pernas</h2>")[1]
+
+    assert headings(page, 2) == ["Abdômen", "Ombros", "Pernas"]
+    assert headings(legs_section, 3) == ["Posteriores de coxa", "Quadríceps"]
+    assert legs_section.index("Agachamento") < legs_section.index("Leg press")
+    # Accented names sort next to their unaccented letters, not after "Z".
+    assert page.index("Elevação lateral") < page.index("Encolhimento")
+
+
+def test_library_shows_unclassified_marker_after_classified_entries(client, session):
+    create_exercise(session, "Remada cavalinho", "Costas", "XXXXX")
+    create_exercise(session, "Pulldown", "Costas", "Latíssimo do dorso")
+    create_exercise(session, "Exercício pendente")
+
+    page = client.get("/exercises").get_data(as_text=True)
+    back_section = page.split(">Costas</h2>")[1]
+
+    assert headings(page, 2) == ["Costas", "XXXXX"]
+    assert headings(back_section, 3)[:2] == ["Latíssimo do dorso", "XXXXX"]
+    assert "Remada cavalinho" in back_section
+    assert "Exercício pendente" in page
+
+
+def test_library_has_no_create_edit_or_delete_actions(client, session):
+    exercise = create_exercise(session, "Supino reto", "Peito", "Peitoral médio")
+
+    page = client.get("/exercises").get_data(as_text=True)
+
+    assert "Novo exercício" not in page
+    assert 'href="/exercises/new"' not in page
+    assert f"/exercises/{exercise.id}/edit" not in page
+    assert f"/exercises/{exercise.id}/delete" not in page
+    assert "<form" not in page.split("<main")[1]
+
+
+@pytest.mark.parametrize(
+    ("method", "url"),
+    [
+        ("get", "/exercises/new"),
+        ("get", "/exercises/1/edit"),
+        ("post", "/exercises/1/edit"),
+        ("post", "/exercises/1/delete"),
+    ],
+)
+def test_exercise_management_routes_no_longer_exist(client, session, method, url):
+    create_exercise(session, "Supino reto", "Peito", "Peitoral médio")
+
+    response = getattr(client, method)(url, data={"name": "Outro nome"})
+
+    assert response.status_code == 404
+
+
+def test_exercises_cannot_be_created_through_http(client, session):
     response = client.post("/exercises", data={"name": "Supino reto"})
 
-    exercise = session.query(Exercise).one()
-    assert response.status_code == 302
-    assert response.headers["Location"].endswith("/exercises")
-    assert exercise.name == "Supino reto"
-
-
-def test_creation_removes_surrounding_whitespace(client, session):
-    response = client.post("/exercises", data={"name": "  Supino reto  "})
-
-    assert response.status_code == 302
-    assert session.query(Exercise).one().name == "Supino reto"
-
-
-@pytest.mark.parametrize("name", ["", "   "])
-def test_creation_rejects_empty_name(client, session, name):
-    response = client.post("/exercises", data={"name": name})
-
-    assert response.status_code == 200
-    assert b"Informe um nome de exerc\xc3\xadcio." in response.data
+    assert response.status_code == 405
     assert session.query(Exercise).count() == 0
 
 
-@pytest.mark.parametrize("duplicate_name", ["supino inclinado", " SUPINO INCLINADO "])
-def test_creation_rejects_case_insensitive_duplicate(client, session, duplicate_name):
-    create_exercise(session, "Supino Inclinado")
-
-    response = client.post("/exercises", data={"name": duplicate_name})
-
-    assert response.status_code == 200
-    assert b"J\xc3\xa1 existe um exerc\xc3\xadcio com esse nome." in response.data
-    assert session.query(Exercise).count() == 1
-
-
-def test_edits_exercise(client, session):
-    exercise = create_exercise(session)
-
-    response = client.post(f"/exercises/{exercise.id}/edit", data={"name": "Supino inclinado"})
-
-    assert response.status_code == 302
-    assert session.get(Exercise, exercise.id).name == "Supino inclinado"
-
-
-def test_edit_normalizes_name(client, session):
-    exercise = create_exercise(session)
-
-    response = client.post(f"/exercises/{exercise.id}/edit", data={"name": "  Supino inclinado  "})
-
-    assert response.status_code == 302
-    assert session.get(Exercise, exercise.id).name == "Supino inclinado"
-
-
-def test_editing_nonexistent_exercise_returns_404(client):
-    response = client.get("/exercises/999/edit")
-
-    assert response.status_code == 404
-
-
-def test_updating_nonexistent_exercise_returns_404(client):
-    response = client.post("/exercises/999/edit", data={"name": "Supino reto"})
-
-    assert response.status_code == 404
-
-
-def test_edit_rejects_duplicate_name(client, session):
-    existing_exercise = create_exercise(session, "Supino reto")
-    exercise = create_exercise(session, "Remada curvada")
-
-    response = client.post(f"/exercises/{exercise.id}/edit", data={"name": " SUPINO RETO "})
-
-    assert response.status_code == 200
-    assert b"J\xc3\xa1 existe um exerc\xc3\xadcio com esse nome." in response.data
-    assert session.get(Exercise, existing_exercise.id).name == "Supino reto"
-    assert session.get(Exercise, exercise.id).name == "Remada curvada"
-
-
-def test_deletes_unused_exercise(client, session):
-    exercise = create_exercise(session)
-
-    response = client.post(f"/exercises/{exercise.id}/delete")
-
-    assert response.status_code == 302
-    assert session.get(Exercise, exercise.id) is None
-
-
-def test_delete_exercise_with_history_shows_message(client, session):
-    exercise = create_exercise(session)
-    workout = Workout(date=date(2026, 10, 2), name="Treino A")
-    workout_exercise = WorkoutExercise(workout=workout, exercise=exercise, position=1)
-    session.add_all([workout, workout_exercise])
+def test_exercise_used_in_workout_is_unchanged_by_removed_routes(client, session):
+    exercise = create_exercise(session, "Supino reto", "Peito", "Peitoral médio")
+    workout = Workout(date=date(2026, 10, 6), name="Push")
+    session.add_all([workout, WorkoutExercise(workout=workout, exercise=exercise, position=1)])
     session.commit()
 
-    response = client.post(f"/exercises/{exercise.id}/delete", follow_redirects=True)
+    client.post(f"/exercises/{exercise.id}/edit", data={"name": "Outro"})
+    client.post(f"/exercises/{exercise.id}/delete")
 
-    assert response.status_code == 200
-    assert b"n\xc3\xa3o pode ser exclu\xc3\xaddo porque possui hist\xc3\xb3rico de treino" in response.data
-    assert session.get(Exercise, exercise.id) is not None
-
-
-def test_deleting_nonexistent_exercise_returns_404(client):
-    response = client.post("/exercises/999/delete")
-
-    assert response.status_code == 404
+    session.expire_all()
+    assert session.get(Exercise, exercise.id).name == "Supino reto"
+    assert session.query(WorkoutExercise).filter_by(exercise_id=exercise.id).count() == 1
