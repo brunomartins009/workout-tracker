@@ -1,3 +1,4 @@
+import re
 from datetime import date
 from decimal import Decimal
 
@@ -42,6 +43,16 @@ def ordered_sets(session, workout_exercise):
     )
 
 
+def rendered_sets(page):
+    """Return (position, repetitions, weight) of each set row, in page order."""
+    return re.findall(
+        r'<td class="set-position">(\d+)</td>\s*'
+        r'<td class="set-repetitions[^"]*">(\d+)</td>\s*'
+        r'<td class="set-weight[^"]*">([\d.]+) kg</td>',
+        page,
+    )
+
+
 def test_detail_displays_sets_in_position_order(client, session):
     workout = create_workout(session)
     exercise, workout_exercise = create_workout_exercise(session, workout)
@@ -52,9 +63,7 @@ def test_detail_displays_sets_in_position_order(client, session):
     page = response.get_data(as_text=True)
 
     assert response.status_code == 200
-    assert page.index("Série 1: 10 reps, 20.00 kg") < page.index(
-        "Série 2: 8 reps, 22.00 kg"
-    )
+    assert rendered_sets(page) == [("1", "10", "20.00"), ("2", "8", "22.00")]
     assert exercise.name in page
 
 

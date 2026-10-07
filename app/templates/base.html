@@ -7,12 +7,29 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
 </head>
 <body>
-  <main>
-    {% with messages = get_flashed_messages() %}
+  <header class="site-header">
+    <div class="site-header-inner">
+      <a class="brand" href="{{ url_for('workouts.list_workouts') }}">Workout Tracker</a>
+      <nav class="site-nav" aria-label="Navegação principal">
+        {# request.blueprint identifies the current area, so the nav can highlight it. #}
+        <a href="{{ url_for('workouts.list_workouts') }}" {% if request.blueprint == 'workouts' %}aria-current="page"{% endif %}>Treinos</a>
+        <a href="{{ url_for('exercises.list_exercises') }}" {% if request.blueprint == 'exercises' %}aria-current="page"{% endif %}>Exercícios</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
-        <ul class="messages" aria-live="polite">
-          {% for message in messages %}
-            <li>{{ message }}</li>
+        <ul class="flash-messages">
+          {% for category, message in messages %}
+            {% if category == 'error' %}
+              <li class="alert alert-error" role="alert">{{ message }}</li>
+            {% elif category == 'success' %}
+              <li class="alert alert-success" role="status">{{ message }}</li>
+            {% else %}
+              <li class="alert alert-info" role="status">{{ message }}</li>
+            {% endif %}
           {% endfor %}
         </ul>
       {% endif %}

@@ -3,41 +3,51 @@
 {% block title %}Treinos | Workout Tracker{% endblock %}
 
 {% block content %}
-  <header>
-    <h1>Treinos</h1>
-    <a href="{{ url_for('workouts.new_workout') }}">Novo treino</a>
+  <header class="page-header">
+    <div>
+      <h1>Histórico de treinos</h1>
+      <p class="page-subtitle">Treinos mais recentes primeiro.</p>
+    </div>
+    <a class="btn btn-primary" href="{{ url_for('workouts.new_workout') }}">+ Novo treino</a>
   </header>
 
   {% if workout_rows %}
-    <table>
-      <thead>
-        <tr>
-          <th scope="col">Data</th>
-          <th scope="col">Nome</th>
-          <th scope="col">Exercícios</th>
-          <th scope="col">Séries</th>
-          <th scope="col">Ações</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for workout, exercise_count, set_count in workout_rows %}
-          <tr id="workout-{{ workout.id }}">
-            <td>{{ workout.date.strftime('%d/%m/%Y') }}</td>
-            <td><a href="{{ url_for('workouts.workout_detail', workout_id=workout.id) }}">{{ workout.name }}</a></td>
-            <td class="exercise-count">{{ exercise_count }}</td>
-            <td class="set-count">{{ set_count }}</td>
-            <td>
-              <a href="{{ url_for('workouts.workout_detail', workout_id=workout.id) }}">Ver treino</a>
-              <a href="{{ url_for('workouts.edit_workout', workout_id=workout.id) }}">Editar</a>
-              <form action="{{ url_for('workouts.delete_workout', workout_id=workout.id) }}" method="post">
-                <button type="submit">Excluir</button>
-              </form>
-            </td>
+    <div class="panel table-wrapper">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th scope="col">Data</th>
+            <th scope="col">Treino</th>
+            <th scope="col" class="numeric">Exercícios</th>
+            <th scope="col" class="numeric">Séries</th>
+            <th scope="col" class="row-actions"><span class="visually-hidden">Ações</span></th>
           </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {% for workout, exercise_count, set_count in workout_rows %}
+            <tr id="workout-{{ workout.id }}">
+              <td><time datetime="{{ workout.date.isoformat() }}">{{ workout.date.strftime('%d/%m/%Y') }}</time></td>
+              <td><a class="primary-link" href="{{ url_for('workouts.workout_detail', workout_id=workout.id) }}">{{ workout.name }}</a></td>
+              <td class="exercise-count numeric">{{ exercise_count }}</td>
+              <td class="set-count numeric">{{ set_count }}</td>
+              <td class="row-actions">
+                <div class="actions">
+                  <a class="btn btn-secondary btn-small" href="{{ url_for('workouts.workout_detail', workout_id=workout.id) }}">Abrir<span class="visually-hidden"> {{ workout.name }}</span></a>
+                  <a class="btn btn-secondary btn-small" href="{{ url_for('workouts.edit_workout', workout_id=workout.id) }}">Editar<span class="visually-hidden"> {{ workout.name }}</span></a>
+                  <form class="inline-form" action="{{ url_for('workouts.delete_workout', workout_id=workout.id) }}" method="post">
+                    <button class="btn btn-danger btn-small" type="submit">Excluir<span class="visually-hidden"> {{ workout.name }}</span></button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   {% else %}
-    <p>Nenhum treino cadastrado.</p>
+    <div class="panel empty-state">
+      <p>Nenhum treino cadastrado.</p>
+      <p><a class="btn btn-primary" href="{{ url_for('workouts.new_workout') }}">Registrar primeiro treino</a></p>
+    </div>
   {% endif %}
 {% endblock %}

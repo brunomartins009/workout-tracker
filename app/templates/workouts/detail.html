@@ -3,100 +3,163 @@
 {% block title %}{{ workout.name }} | Workout Tracker{% endblock %}
 
 {% block content %}
-  <header>
+  <a class="back-link" href="{{ url_for('workouts.list_workouts') }}">← Histórico de treinos</a>
+  <header class="page-header">
     <div>
       <h1>{{ workout.name }}</h1>
-      <p>{{ workout.date.strftime('%d/%m/%Y') }}</p>
+      <p class="page-subtitle"><time datetime="{{ workout.date.isoformat() }}">{{ workout.date.strftime('%d/%m/%Y') }}</time></p>
     </div>
-    <a href="{{ url_for('workouts.edit_workout', workout_id=workout.id) }}">Editar treino</a>
+    <a class="btn btn-secondary" href="{{ url_for('workouts.edit_workout', workout_id=workout.id) }}">Editar treino</a>
   </header>
 
-  <section>
-    <h2>Resumo</h2>
-    <dl>
-      <dt>Exercícios</dt>
-      <dd class="exercise-count">{{ workout_exercises|length }}</dd>
-      <dt>Séries</dt>
-      <dd class="set-count">{{ total_sets }}</dd>
+  <section aria-labelledby="summary-title">
+    <h2 id="summary-title" class="visually-hidden">Resumo</h2>
+    <dl class="stats">
+      <div class="stat panel">
+        <dt>Exercícios</dt>
+        <dd class="exercise-count">{{ workout_exercises|length }}</dd>
+      </div>
+      <div class="stat panel">
+        <dt>Séries</dt>
+        <dd class="set-count">{{ total_sets }}</dd>
+      </div>
     </dl>
   </section>
 
-  <section>
-    <h2>Exercícios</h2>
+  <section class="section" aria-labelledby="exercises-title">
+    <div class="section-header">
+      <h2 id="exercises-title">Exercícios</h2>
+      {% if workout_exercises %}
+        <a href="#add-exercise">+ Adicionar exercício</a>
+      {% endif %}
+    </div>
 
     {% if workout_exercises %}
-      <ol>
+      <ol class="exercise-list">
         {% for workout_exercise in workout_exercises %}
-          <li>
-            {{ workout_exercise.exercise.name }}
-            {% if not loop.first %}
-              <form action="{{ url_for('workouts.move_workout_exercise_up', workout_id=workout.id, exercise_id=workout_exercise.exercise_id) }}" method="post">
-                <button type="submit" aria-label="Mover {{ workout_exercise.exercise.name }} para cima">↑</button>
-              </form>
-            {% endif %}
-            {% if not loop.last %}
-              <form action="{{ url_for('workouts.move_workout_exercise_down', workout_id=workout.id, exercise_id=workout_exercise.exercise_id) }}" method="post">
-                <button type="submit" aria-label="Mover {{ workout_exercise.exercise.name }} para baixo">↓</button>
-              </form>
-            {% endif %}
-            <form action="{{ url_for('workouts.delete_workout_exercise', workout_id=workout.id, exercise_id=workout_exercise.exercise_id) }}" method="post">
-              <button type="submit">Remover</button>
-            </form>
+          {% set exercise_name = workout_exercise.exercise.name %}
+          {% set ordered_sets = workout_exercise.sets|sort(attribute='position') %}
+          {% set add_set_failed = set_error and failed_workout_exercise_id == workout_exercise.id %}
+          {#
+            The add-set form starts with the previous set's values because sets of
+            the same exercise usually repeat them; after a failed submission it shows
+            what the user typed instead.
+          #}
+          {% if add_set_failed %}
+            {% set default_repetitions = set_form_values.get('repetitions', '') %}
+            {% set default_weight_kg = set_form_values.get('weight_kg', '') %}
+          {% elif ordered_sets %}
+            {% set default_repetitions = (ordered_sets|last).repetitions %}
+            {% set default_weight_kg = (ordered_sets|last).weight_kg %}
+          {% else %}
+            {% set default_repetitions = '' %}
+            {% set default_weight_kg = '' %}
+          {% endif %}
 
-            <div>
-              <h3>Séries</h3>
-              {% set ordered_sets = workout_exercise.sets|sort(attribute='position') %}
-              {% if ordered_sets %}
-                <ol>
-                  {% for workout_set in ordered_sets %}
-                    <li>
-                      Série {{ workout_set.position }}: {{ workout_set.repetitions }} reps, {{ workout_set.weight_kg }} kg
-                      <a href="{{ url_for('workouts.edit_workout_set', workout_id=workout.id, exercise_id=workout_exercise.exercise_id, set_id=workout_set.id) }}">Editar</a>
-                      <form action="{{ url_for('workouts.delete_workout_set', workout_id=workout.id, exercise_id=workout_exercise.exercise_id, set_id=workout_set.id) }}" method="post">
-                        <button type="submit">Excluir</button>
-                      </form>
-                    </li>
-                  {% endfor %}
-                </ol>
-              {% else %}
-                <p>Nenhuma série registrada.</p>
-              {% endif %}
+          <li class="panel exercise-card" id="exercise-{{ workout_exercise.id }}">
+            <div class="exercise-card-header">
+              <h3>
+                <span class="position-badge" aria-hidden="true">{{ workout_exercise.position }}</span>
+                {{ exercise_name }}
+              </h3>
+              <div class="actions">
+                {% if not loop.first %}
+                  <form class="inline-form" action="{{ url_for('workouts.move_workout_exercise_up', workout_id=workout.id, exercise_id=workout_exercise.exercise_id) }}" method="post">
+                    <button class="btn btn-secondary btn-small btn-icon" type="submit" aria-label="Mover {{ exercise_name }} para cima" title="Mover para cima">↑</button>
+                  </form>
+                {% endif %}
+                {% if not loop.last %}
+                  <form class="inline-form" action="{{ url_for('workouts.move_workout_exercise_down', workout_id=workout.id, exercise_id=workout_exercise.exercise_id) }}" method="post">
+                    <button class="btn btn-secondary btn-small btn-icon" type="submit" aria-label="Mover {{ exercise_name }} para baixo" title="Mover para baixo">↓</button>
+                  </form>
+                {% endif %}
+                <form class="inline-form" action="{{ url_for('workouts.delete_workout_exercise', workout_id=workout.id, exercise_id=workout_exercise.exercise_id) }}" method="post">
+                  <button class="btn btn-danger btn-small" type="submit">Remover<span class="visually-hidden"> {{ exercise_name }}</span></button>
+                </form>
+              </div>
+            </div>
 
-              {% if set_error %}
-                <p class="error" role="alert">{{ set_error }}</p>
+            {% if ordered_sets %}
+              <div class="table-wrapper">
+                <table class="data-table sets-table">
+                  <caption class="visually-hidden">Séries de {{ exercise_name }}</caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Série</th>
+                      <th scope="col" class="numeric">Repetições</th>
+                      <th scope="col" class="numeric">Peso</th>
+                      <th scope="col" class="row-actions"><span class="visually-hidden">Ações</span></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for workout_set in ordered_sets %}
+                      <tr id="set-{{ workout_set.id }}">
+                        <td class="set-position">{{ workout_set.position }}</td>
+                        <td class="set-repetitions numeric">{{ workout_set.repetitions }}</td>
+                        <td class="set-weight numeric">{{ workout_set.weight_kg }} kg</td>
+                        <td class="row-actions">
+                          <div class="actions">
+                            <a class="btn-text" href="{{ url_for('workouts.edit_workout_set', workout_id=workout.id, exercise_id=workout_exercise.exercise_id, set_id=workout_set.id) }}">Editar<span class="visually-hidden"> série {{ workout_set.position }}</span></a>
+                            <form class="inline-form" action="{{ url_for('workouts.delete_workout_set', workout_id=workout.id, exercise_id=workout_exercise.exercise_id, set_id=workout_set.id) }}" method="post">
+                              <button class="btn-text btn-text-danger" type="submit">Excluir<span class="visually-hidden"> série {{ workout_set.position }}</span></button>
+                            </form>
+                          </div>
+                        </td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            {% else %}
+              <p class="empty-sets muted">Nenhuma série registrada.</p>
+            {% endif %}
+
+            <div class="add-set">
+              {% if add_set_failed %}
+                <p class="alert alert-error" role="alert">{{ set_error }}</p>
               {% endif %}
-              <form action="{{ url_for('workouts.add_workout_set', workout_id=workout.id, exercise_id=workout_exercise.exercise_id) }}" method="post">
-                <label for="repetitions-{{ workout_exercise.id }}">Repetições</label>
-                <input id="repetitions-{{ workout_exercise.id }}" name="repetitions" type="number" min="1" value="{{ set_form_values.get('repetitions', '') }}" required>
-                <label for="weight-{{ workout_exercise.id }}">Peso (kg)</label>
-                <input id="weight-{{ workout_exercise.id }}" name="weight_kg" type="number" min="0" step="0.01" value="{{ set_form_values.get('weight_kg', '') }}" required>
-                <button type="submit">Adicionar série</button>
+              <form class="add-set-form" action="{{ url_for('workouts.add_workout_set', workout_id=workout.id, exercise_id=workout_exercise.exercise_id) }}" method="post">
+                <div class="form-field">
+                  <label for="repetitions-{{ workout_exercise.id }}">Repetições</label>
+                  <input id="repetitions-{{ workout_exercise.id }}" name="repetitions" type="number" min="1" inputmode="numeric" value="{{ default_repetitions }}" required>
+                </div>
+                <div class="form-field">
+                  <label for="weight-{{ workout_exercise.id }}">Peso (kg)</label>
+                  <input id="weight-{{ workout_exercise.id }}" name="weight_kg" type="number" min="0" step="0.01" inputmode="decimal" value="{{ default_weight_kg }}" required>
+                </div>
+                <button class="btn btn-primary" type="submit">Adicionar série</button>
               </form>
             </div>
           </li>
         {% endfor %}
       </ol>
+      <p class="form-hint">Use 0 kg para exercícios com peso corporal.</p>
     {% else %}
-      <p>Nenhum exercício adicionado a este treino.</p>
+      <div class="panel empty-state">
+        <p>Nenhum exercício adicionado a este treino.</p>
+        <p class="muted">Escolha um exercício abaixo para começar a registrar as séries.</p>
+      </div>
     {% endif %}
   </section>
 
-  <section>
+  <section class="section panel panel-body" id="add-exercise">
     <h2>Adicionar exercício</h2>
     {% if exercises %}
-      <form action="{{ url_for('workouts.add_workout_exercise', workout_id=workout.id) }}" method="post">
-        <label for="exercise_id">Exercício</label>
-        <select id="exercise_id" name="exercise_id" required>
-          {% for exercise in exercises %}
-            <option value="{{ exercise.id }}">{{ exercise.name }}</option>
-          {% endfor %}
-        </select>
-        <button type="submit">Adicionar</button>
+      <form class="add-exercise-form" action="{{ url_for('workouts.add_workout_exercise', workout_id=workout.id) }}" method="post">
+        <div class="form-field">
+          <label for="exercise_id">Exercício</label>
+          <select id="exercise_id" name="exercise_id" required>
+            {% for exercise in exercises %}
+              <option value="{{ exercise.id }}">{{ exercise.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <button class="btn btn-primary" type="submit">Adicionar</button>
       </form>
+      <p class="form-hint">Não encontrou o exercício? <a href="{{ url_for('exercises.new_exercise') }}">Cadastre-o na biblioteca</a>.</p>
     {% else %}
-      <p>Cadastre um exercício antes de adicioná-lo ao treino.</p>
+      <p class="muted">Cadastre um exercício antes de adicioná-lo ao treino.</p>
+      <p class="form-actions"><a class="btn btn-secondary" href="{{ url_for('exercises.new_exercise') }}">Cadastrar exercício</a></p>
     {% endif %}
   </section>
-
-  <p><a href="{{ url_for('workouts.list_workouts') }}">Voltar para treinos</a></p>
 {% endblock %}

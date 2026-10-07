@@ -3,34 +3,45 @@
 {% block title %}Exercícios | Workout Tracker{% endblock %}
 
 {% block content %}
-  <header>
-    <h1>Exercícios</h1>
-    <a href="{{ url_for('exercises.new_exercise') }}">Novo exercício</a>
+  <header class="page-header">
+    <div>
+      <h1>Exercícios</h1>
+      <p class="page-subtitle">Sua biblioteca de exercícios para montar os treinos.</p>
+    </div>
+    <a class="btn btn-primary" href="{{ url_for('exercises.new_exercise') }}">+ Novo exercício</a>
   </header>
 
   {% if exercises %}
-    <table>
-      <thead>
-        <tr>
-          <th scope="col">Nome</th>
-          <th scope="col">Ações</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for exercise in exercises %}
+    <div class="panel table-wrapper">
+      <table class="data-table">
+        <thead>
           <tr>
-            <td>{{ exercise.name }}</td>
-            <td>
-              <a href="{{ url_for('exercises.edit_exercise', exercise_id=exercise.id) }}">Editar</a>
-              <form action="{{ url_for('exercises.delete_exercise', exercise_id=exercise.id) }}" method="post">
-                <button type="submit">Excluir</button>
-              </form>
-            </td>
+            <th scope="col">Nome</th>
+            <th scope="col" class="row-actions"><span class="visually-hidden">Ações</span></th>
           </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {% for exercise in exercises %}
+            <tr>
+              <td>{{ exercise.name }}</td>
+              <td class="row-actions">
+                <div class="actions">
+                  <a class="btn btn-secondary btn-small" href="{{ url_for('exercises.edit_exercise', exercise_id=exercise.id) }}">Editar<span class="visually-hidden"> {{ exercise.name }}</span></a>
+                  <form class="inline-form" action="{{ url_for('exercises.delete_exercise', exercise_id=exercise.id) }}" method="post">
+                    <button class="btn btn-danger btn-small" type="submit">Excluir<span class="visually-hidden"> {{ exercise.name }}</span></button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="form-hint">Exercícios que já fazem parte de algum treino não podem ser excluídos.</p>
   {% else %}
-    <p>Nenhum exercício cadastrado.</p>
+    <div class="panel empty-state">
+      <p>Nenhum exercício cadastrado.</p>
+      <p><a class="btn btn-primary" href="{{ url_for('exercises.new_exercise') }}">Cadastrar primeiro exercício</a></p>
+    </div>
   {% endif %}
 {% endblock %}

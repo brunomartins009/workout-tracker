@@ -48,6 +48,22 @@ def history_row(page, workout):
     return match.group(1)
 
 
+def cell_value(row, css_class):
+    match = re.search(rf'<td class="{css_class}[^"]*">(\d+)</td>', row)
+    assert match is not None, f"cell {css_class} not found"
+    return int(match.group(1))
+
+
+def rendered_sets(page):
+    """Return (position, repetitions, weight) of each set row, in page order."""
+    return re.findall(
+        r'<td class="set-position">(\d+)</td>\s*'
+        r'<td class="set-repetitions[^"]*">(\d+)</td>\s*'
+        r'<td class="set-weight[^"]*">([\d.]+) kg</td>',
+        page,
+    )
+
+
 def summary_value(page, css_class):
     match = re.search(rf'<dd class="{css_class}">(\d+)</dd>', page)
     assert match is not None, f"summary value {css_class} not found"
@@ -109,8 +125,8 @@ def test_history_shows_exercise_and_set_counts(client, session):
 
     row = history_row(client.get("/workouts").get_data(as_text=True), workout)
 
-    assert '<td class="exercise-count">3</td>' in row
-    assert '<td class="set-count">5</td>' in row
+    assert cell_value(row, "exercise-count") == 3
+    assert cell_value(row, "set-count") == 5
 
 
 def test_history_shows_zero_counts_for_empty_workout(client, session):
@@ -118,8 +134,8 @@ def test_history_shows_zero_counts_for_empty_workout(client, session):
 
     row = history_row(client.get("/workouts").get_data(as_text=True), workout)
 
-    assert '<td class="exercise-count">0</td>' in row
-    assert '<td class="set-count">0</td>' in row
+    assert cell_value(row, "exercise-count") == 0
+    assert cell_value(row, "set-count") == 0
 
 
 def test_history_counts_are_isolated_between_workouts(client, session):
@@ -133,10 +149,10 @@ def test_history_counts_are_isolated_between_workouts(client, session):
     first_row = history_row(page, first)
     second_row = history_row(page, second)
 
-    assert '<td class="exercise-count">1</td>' in first_row
-    assert '<td class="set-count">4</td>' in first_row
-    assert '<td class="exercise-count">2</td>' in second_row
-    assert '<td class="set-count">3</td>' in second_row
+    assert cell_value(first_row, "exercise-count") == 1
+    assert cell_value(first_row, "set-count") == 4
+    assert cell_value(second_row, "exercise-count") == 2
+    assert cell_value(second_row, "set-count") == 3
 
 
 def test_history_links_to_workout_detail_and_keeps_actions(client, session):
@@ -189,7 +205,7 @@ def test_detail_shows_workout_exercises_sets_repetitions_and_weight(client, sess
     assert "Push" in page
     assert "05/10/2026" in page
     assert "Supino" in page
-    assert "Série 1: 12 reps, 42.50 kg" in page
+    assert rendered_sets(page) == [("1", "12", "42.50")]
 
 
 def test_detail_for_nonexistent_workout_returns_404(client):
@@ -226,8 +242,11 @@ def test_detail_lists_sets_in_position_order(client, session):
 
     page = client.get(f"/workouts/{workout.id}").get_data(as_text=True)
 
-    assert page.index("Série 1: 10 reps, 20.00 kg") < page.index("Série 2: 8 reps, 25.00 kg")
-    assert page.index("Série 2: 8 reps, 25.00 kg") < page.index("Série 3: 6 reps, 30.00 kg")
+    assert rendered_sets(page) == [
+        ("1", "10", "20.00"),
+        ("2", "8", "25.00"),
+        ("3", "6", "30.00"),
+    ]
 
 
 def test_detail_summary_shows_exercise_and_set_totals(client, session):

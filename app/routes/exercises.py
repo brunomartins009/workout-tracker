@@ -42,7 +42,7 @@ def create_exercise():
             error="Já existe um exercício com esse nome.",
         ), 200
 
-    flash("Exercício criado com sucesso.")
+    flash("Exercício criado com sucesso.", "success")
     return redirect(url_for("exercises.list_exercises"))
 
 
@@ -73,7 +73,7 @@ def update_exercise(exercise_id):
             error="Já existe um exercício com esse nome.",
         ), 200
 
-    flash("Exercício atualizado com sucesso.")
+    flash("Exercício atualizado com sucesso.", "success")
     return redirect(url_for("exercises.list_exercises"))
 
 
@@ -86,9 +86,9 @@ def delete_exercise(exercise_id):
         db.session.commit()
     except IntegrityError:
         db.session.rollback()
-        flash("Este exercício não pode ser excluído porque possui histórico de treino.")
+        flash("Este exercício não pode ser excluído porque possui histórico de treino.", "error")
     else:
-        flash("Exercício excluído com sucesso.")
+        flash("Exercício excluído com sucesso.", "success")
 
     return redirect(url_for("exercises.list_exercises"))
 

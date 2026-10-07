@@ -4,32 +4,41 @@
   {% set page_title = "Editar treino" %}
   {% set submit_label = "Salvar alterações" %}
   {% set action_url = url_for('workouts.update_workout', workout_id=workout.id) %}
+  {# Editing usually starts from the workout page, so cancelling returns there. #}
+  {% set cancel_url = url_for('workouts.workout_detail', workout_id=workout.id) %}
 {% else %}
   {% set page_title = "Novo treino" %}
   {% set submit_label = "Salvar treino" %}
   {% set action_url = url_for('workouts.create_workout') %}
+  {% set cancel_url = url_for('workouts.list_workouts') %}
 {% endif %}
 
 {% block title %}{{ page_title }} | Workout Tracker{% endblock %}
 
 {% block content %}
-  <h1>{{ page_title }}</h1>
+  <a class="back-link" href="{{ url_for('workouts.list_workouts') }}">← Histórico de treinos</a>
+  <header class="page-header">
+    <h1>{{ page_title }}</h1>
+  </header>
 
-  {% if error %}
-    <p class="error" role="alert">{{ error }}</p>
-  {% endif %}
+  <div class="panel panel-body form-panel">
+    {% if error %}
+      <p class="alert alert-error" role="alert">{{ error }}</p>
+    {% endif %}
 
-  <form action="{{ action_url }}" method="post">
-    <p>
-      <label for="date">Data do treino</label>
-      <input id="date" name="date" type="date" value="{{ form_date }}" required autofocus>
-    </p>
-    <p>
-      <label for="name">Nome do treino</label>
-      <input id="name" name="name" type="text" value="{{ form_name }}" required>
-    </p>
-    <button type="submit">{{ submit_label }}</button>
-  </form>
-
-  <p><a href="{{ url_for('workouts.list_workouts') }}">Voltar para a lista</a></p>
+    <form action="{{ action_url }}" method="post">
+      <div class="form-field">
+        <label for="date">Data do treino</label>
+        <input id="date" name="date" type="date" value="{{ form_date }}" required autofocus>
+      </div>
+      <div class="form-field">
+        <label for="name">Nome do treino</label>
+        <input id="name" name="name" type="text" placeholder="Ex.: Treino A, Push, Pernas" value="{{ form_name }}" required>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit">{{ submit_label }}</button>
+        <a class="btn btn-secondary" href="{{ cancel_url }}">Cancelar</a>
+      </div>
+    </form>
+  </div>
 {% endblock %}

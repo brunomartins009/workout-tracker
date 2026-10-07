@@ -59,7 +59,7 @@ def create_workout():
             form_name=form_name,
         )
 
-    flash("Treino criado com sucesso.")
+    flash("Treino criado com sucesso.", "success")
     return redirect(url_for("workouts.list_workouts"))
 
 
@@ -90,7 +90,7 @@ def update_workout(workout_id):
             form_name=form_name,
         )
 
-    flash("Treino atualizado com sucesso.")
+    flash("Treino atualizado com sucesso.", "success")
     return redirect(url_for("workouts.list_workouts"))
 
 
@@ -100,7 +100,7 @@ def delete_workout(workout_id):
     db.session.delete(workout)
     db.session.commit()
 
-    flash("Treino excluído com sucesso.")
+    flash("Treino excluído com sucesso.", "success")
     return redirect(url_for("workouts.list_workouts"))
 
 
@@ -119,7 +119,7 @@ def add_workout_exercise(workout_id):
         )
     )
     if existing_workout_exercise is not None:
-        flash("Este exercício já foi adicionado ao treino.")
+        flash("Este exercício já foi adicionado ao treino.", "error")
         return redirect(url_for("workouts.workout_detail", workout_id=workout_id))
 
     last_position = db.session.scalar(
@@ -138,9 +138,9 @@ def add_workout_exercise(workout_id):
         db.session.commit()
     except IntegrityError:
         db.session.rollback()
-        flash("Este exercício já foi adicionado ao treino.")
+        flash("Este exercício já foi adicionado ao treino.", "error")
     else:
-        flash("Exercício adicionado ao treino.")
+        flash("Exercício adicionado ao treino.", "success")
 
     return redirect(url_for("workouts.workout_detail", workout_id=workout_id))
 
@@ -166,7 +166,7 @@ def delete_workout_exercise(workout_id, exercise_id):
         db.session.flush()
 
     db.session.commit()
-    flash("Exercício removido do treino.")
+    flash("Exercício removido do treino.", "success")
     return redirect(url_for("workouts.workout_detail", workout_id=workout_id))
 
 
@@ -230,6 +230,7 @@ def add_workout_set(workout_id, exercise_id):
             workout,
             set_error="Informe repetições positivas e um peso válido com até duas casas decimais.",
             set_form_values={"repetitions": repetitions, "weight_kg": weight_kg},
+            failed_workout_exercise_id=workout_exercise.id,
         )
     except IntegrityError:
         db.session.rollback()
@@ -237,9 +238,10 @@ def add_workout_set(workout_id, exercise_id):
             workout,
             set_error="Não foi possível adicionar a série. Tente novamente.",
             set_form_values={"repetitions": repetitions, "weight_kg": weight_kg},
+            failed_workout_exercise_id=workout_exercise.id,
         )
 
-    flash("Série adicionada com sucesso.")
+    flash("Série adicionada com sucesso.", "success")
     return redirect(url_for("workouts.workout_detail", workout_id=workout_id))
 
 
@@ -288,7 +290,7 @@ def update_workout_set(workout_id, exercise_id, set_id):
             weight_kg,
         )
 
-    flash("Série atualizada com sucesso.")
+    flash("Série atualizada com sucesso.", "success")
     return redirect(url_for("workouts.workout_detail", workout_id=workout_id))
 
 
@@ -314,7 +316,7 @@ def delete_workout_set(workout_id, exercise_id, set_id):
         db.session.flush()
 
     db.session.commit()
-    flash("Série excluída com sucesso.")
+    flash("Série excluída com sucesso.", "success")
     return redirect(url_for("workouts.workout_detail", workout_id=workout_id))
 
 
@@ -377,7 +379,12 @@ def _swap_positions(workout_exercise, neighbor_exercise, workout_id):
     workout_exercise.position = neighbor_original_position
 
 
-def _render_workout_detail(workout, set_error=None, set_form_values=None):
+def _render_workout_detail(
+    workout,
+    set_error=None,
+    set_form_values=None,
+    failed_workout_exercise_id=None,
+):
     exercises = db.session.scalars(select(Exercise).order_by(Exercise.name)).all()
     workout_exercises = _workout_exercises(workout.id)
     # Sets are already loaded by selectinload, so counting them here adds no queries.
@@ -390,6 +397,9 @@ def _render_workout_detail(workout, set_error=None, set_form_values=None):
         exercises=exercises,
         set_error=set_error,
         set_form_values=set_form_values or {},
+        # Lets the template show the error and the submitted values only under
+        # the exercise whose "add set" form failed, not under every exercise.
+        failed_workout_exercise_id=failed_workout_exercise_id,
     )
 
 
