@@ -22,6 +22,9 @@
   --color-info: #1f5f99;
   --color-info-soft: #e8f1fa;
 
+  /* Second chart series (weight); repetitions use --color-accent. */
+  --color-chart-weight: #c4570c;
+
   --radius: 8px;
   --radius-small: 6px;
   --shadow: 0 1px 2px rgba(16, 24, 40, 0.06);
@@ -683,6 +686,82 @@ select:focus-visible {
   color: #b54708;
 }
 
+/* ---------- Modal ---------- */
+
+/* Keeps the page behind an open modal from scrolling. */
+body.modal-open {
+  overflow: hidden;
+}
+
+/* Padding stays on .modal-content so a click on the <dialog> element itself
+   can only come from the backdrop (used to close the modal). */
+.modal {
+  width: min(56rem, calc(100% - 2rem));
+  max-height: calc(100vh - 3rem);
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: 0 12px 32px rgba(16, 24, 40, 0.18);
+}
+
+.modal::backdrop {
+  background: rgba(16, 24, 40, 0.55);
+}
+
+.modal-content {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 3rem);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.modal-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-small);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.modal-close:hover {
+  background: var(--color-surface-muted);
+}
+
+.modal-body {
+  overflow-y: auto;
+  padding: var(--space-5);
+}
+
+.modal-message {
+  padding: var(--space-5) 0;
+  text-align: center;
+}
+
+.history-chart {
+  position: relative;
+  height: 18rem;
+  margin-top: var(--space-5);
+}
+
 /* ---------- Small screens ---------- */
 
 @media (max-width: 640px) {
@@ -715,6 +794,8 @@ select:focus-visible {
 
   .panel-body,
   .add-set,
+  .modal-header,
+  .modal-body,
   .library-subgroup,
   .exercise-card-header {
     padding-left: var(--space-4);

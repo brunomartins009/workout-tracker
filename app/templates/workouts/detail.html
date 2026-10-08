@@ -63,6 +63,13 @@
                 {{ exercise_name }}
               </h3>
               <div class="actions">
+                <button
+                  class="btn btn-secondary btn-small"
+                  type="button"
+                  aria-haspopup="dialog"
+                  data-history-url="{{ url_for('exercises.exercise_history', exercise_id=workout_exercise.exercise_id) }}"
+                  data-exercise-name="{{ exercise_name }}"
+                >Histórico<span class="visually-hidden"> de {{ exercise_name }}</span></button>
                 {% if not loop.first %}
                   <form class="inline-form" action="{{ url_for('workouts.move_workout_exercise_up', workout_id=workout.id, exercise_id=workout_exercise.exercise_id) }}" method="post">
                     <button class="btn btn-secondary btn-small btn-icon" type="submit" aria-label="Mover {{ exercise_name }} para cima" title="Mover para cima">↑</button>
@@ -168,4 +175,24 @@
       <p class="form-actions"><a class="btn btn-secondary" href="{{ url_for('exercises.list_exercises') }}">Ver biblioteca</a></p>
     {% endif %}
   </section>
+
+  {#
+    One dialog is reused by every "Histórico" button. The native <dialog> opened
+    with showModal() blocks the page behind it, keeps focus inside and closes on
+    Escape; exercise_history.js fills it with the data of the chosen exercise.
+  #}
+  <dialog class="modal" id="exercise-history-dialog" aria-labelledby="exercise-history-title">
+    <div class="modal-content">
+      <header class="modal-header">
+        <h2 id="exercise-history-title">Histórico — <span data-history-exercise-name></span></h2>
+        <button class="modal-close" type="button" data-history-close aria-label="Fechar histórico">×</button>
+      </header>
+      <div class="modal-body" data-history-body aria-live="polite"></div>
+    </div>
+  </dialog>
+{% endblock %}
+
+{% block scripts %}
+  <script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/exercise_history.js') }}"></script>
 {% endblock %}
