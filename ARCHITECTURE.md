@@ -238,7 +238,17 @@ The library is controlled by the application, not by the user:
 * `flask --app run sync-exercise-library` creates missing library exercises and updates the classification of existing ones;
 * the sync matches exercises by normalized name, never deletes exercises and never changes their ids;
 * the sync is not executed automatically on startup;
-* the UI only lists the library (`GET /exercises`) and lets the user pick exercises when building a workout. There are no routes to create, edit or delete exercises.
+* the UI is read-only: users browse the library and pick exercises when building a workout. There are no routes to create, edit or delete exercises.
+
+The library is browsed in three levels:
+
+```text
+GET /exercises                  categories (derived from Exercise.muscle_group) with exercise counts
+GET /exercises/<muscle_group>   exercises of one category, ordered by subgroup and then by name
+exercise modal                  name, muscle group/subgroup, recent history table and history chart
+```
+
+The exercise modal (`templates/partials/exercise_modal.html` + `static/js/exercise_history.js`) is shared by the category page and the workout detail page. Its data comes from a single endpoint, `GET /exercises/<id>/history`, which returns the exercise, the 5 most recent occurrences for the table and the complete history for the chart.
 
 Exercise names are normalized by trimming surrounding whitespace.
 

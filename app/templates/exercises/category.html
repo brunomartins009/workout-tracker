@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block title %}{{ muscle_group }} | Workout Tracker{% endblock %}
+
+{% block content %}
+  <a class="back-link" href="{{ url_for('exercises.list_exercises') }}">← Biblioteca</a>
+  <header class="page-header">
+    <div>
+      <h1{% if muscle_group == 'XXXXX' %} class="unclassified"{% endif %}>{{ muscle_group }}</h1>
+      <p class="page-subtitle">{{ exercises|length }} {{ 'exercício' if exercises|length == 1 else 'exercícios' }}. Selecione um exercício para ver o histórico.</p>
+    </div>
+  </header>
+
+  {# Ordered by subgroup and then by name, as in the rest of the library. #}
+  <ul class="card-grid" aria-label="Exercícios de {{ muscle_group }}">
+    {% for exercise in exercises %}
+      <li>
+        <button
+          class="library-card"
+          type="button"
+          aria-haspopup="dialog"
+          data-history-url="{{ url_for('exercises.exercise_history', exercise_id=exercise.id) }}"
+          data-exercise-name="{{ exercise.name }}"
+        >
+          <span class="library-card-title">{{ exercise.name }}</span>
+          <span class="library-card-detail exercise-subgroup{% if exercise.muscle_subgroup == 'XXXXX' %} unclassified{% endif %}">{{ exercise.muscle_subgroup }}</span>
+        </button>
+      </li>
+    {% endfor %}
+  </ul>
+
+  {% include "partials/exercise_modal.html" %}
+{% endblock %}
+
+{% block scripts %}
+  <script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/exercise_history.js') }}"></script>
+{% endblock %}

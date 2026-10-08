@@ -29,7 +29,7 @@ def list_workouts():
         .outerjoin(WorkoutExercise, WorkoutExercise.workout_id == Workout.id)
         .outerjoin(WorkoutSet, WorkoutSet.workout_exercise_id == WorkoutExercise.id)
         .group_by(Workout.id)
-        .order_by(Workout.date.desc(), Workout.created_at.desc())
+        .order_by(Workout.date.desc(), Workout.created_at.desc(), Workout.id.desc())
     ).all()
     return render_template("workouts/list.html", workout_rows=workout_rows)
 

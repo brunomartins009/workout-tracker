@@ -1,6 +1,6 @@
 import re
 from contextlib import contextmanager
-from datetime import date
+from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy import event
@@ -115,6 +115,24 @@ def test_history_orders_workouts_by_most_recent_date_first(client, session):
 
     assert page.index(f'id="workout-{newest.id}"') < page.index(f'id="workout-{middle.id}"')
     assert page.index(f'id="workout-{middle.id}"') < page.index(f'id="workout-{oldest.id}"')
+
+
+def test_history_orders_same_date_by_creation_time_then_id(client, session):
+    same_moment = datetime(2026, 10, 1, 8, 0, tzinfo=timezone.utc)
+    created_later = Workout(date=date(2026, 10, 1), name="Criado depois", created_at=datetime(2026, 10, 1, 18, 0, tzinfo=timezone.utc))
+    first_same_moment = Workout(date=date(2026, 10, 1), name="Mesmo instante 1", created_at=same_moment)
+    second_same_moment = Workout(date=date(2026, 10, 1), name="Mesmo instante 2", created_at=same_moment)
+    for workout in (created_later, first_same_moment, second_same_moment):
+        session.add(workout)
+        session.commit()
+
+    page = client.get("/workouts").get_data(as_text=True)
+
+    positions = [
+        page.index(f'id="workout-{workout.id}"')
+        for workout in (created_later, second_same_moment, first_same_moment)
+    ]
+    assert positions == sorted(positions)
 
 
 def test_history_shows_exercise_and_set_counts(client, session):

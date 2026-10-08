@@ -1,8 +1,10 @@
-// Exercise history modal on the workout detail page.
+// Exercise modal, used on the workout detail page and on the library category
+// page (markup in templates/partials/exercise_modal.html).
 //
-// Each "Histórico" button carries the URL of GET /exercises/<id>/history.
-// The JSON already contains the table rows (most recent first) and the chart
-// series (oldest first), so this file only opens the dialog and renders them.
+// Each element with data-history-url points to GET /exercises/<id>/history.
+// The JSON already contains the exercise, the table rows (most recent first,
+// already limited) and the chart series (complete, oldest first), so this file
+// only opens the dialog and renders them.
 //
 // Content is built with textContent, never innerHTML, because workout names
 // are typed by the user.
@@ -15,6 +17,9 @@
   }
 
   const exerciseNameElement = dialog.querySelector("[data-history-exercise-name]");
+  const exerciseInfo = dialog.querySelector("[data-exercise-info]");
+  const muscleGroupElement = dialog.querySelector("[data-exercise-muscle-group]");
+  const muscleSubgroupElement = dialog.querySelector("[data-exercise-muscle-subgroup]");
   const body = dialog.querySelector("[data-history-body]");
   let chart = null;
   // Ignores a slow response that arrives after the user opened another
@@ -43,6 +48,7 @@
   dialog.addEventListener("close", function () {
     currentRequest += 1;
     destroyChart();
+    hideExerciseInfo();
     body.replaceChildren();
     document.body.classList.remove("modal-open");
   });
@@ -50,7 +56,9 @@
   function openHistory(url, exerciseName) {
     const request = ++currentRequest;
     destroyChart();
+    // The button's name is shown while loading; the response replaces it.
     exerciseNameElement.textContent = exerciseName;
+    hideExerciseInfo();
     showMessage("Carregando histórico...");
     document.body.classList.add("modal-open");
     dialog.showModal();
@@ -76,6 +84,9 @@
 
   function renderHistory(data) {
     exerciseNameElement.textContent = data.exercise.name;
+    muscleGroupElement.textContent = data.exercise.muscle_group;
+    muscleSubgroupElement.textContent = data.exercise.muscle_subgroup;
+    exerciseInfo.hidden = false;
 
     if (data.history.length === 0) {
       showMessage("Nenhum histórico disponível para este exercício.");
@@ -84,6 +95,12 @@
 
     body.replaceChildren(buildTable(data.history), buildChartContainer());
     renderChart(data.chart);
+  }
+
+  function hideExerciseInfo() {
+    exerciseInfo.hidden = true;
+    muscleGroupElement.textContent = "";
+    muscleSubgroupElement.textContent = "";
   }
 
   function showMessage(text) {
@@ -102,7 +119,7 @@
 
     const caption = document.createElement("caption");
     caption.className = "visually-hidden";
-    caption.textContent = "Histórico do exercício, do treino mais recente para o mais antigo";
+    caption.textContent = "Treinos mais recentes com este exercício, do mais recente para o mais antigo";
     table.appendChild(caption);
 
     const headerRow = document.createElement("tr");
@@ -148,7 +165,7 @@
     canvas.setAttribute("role", "img");
     canvas.setAttribute(
       "aria-label",
-      "Gráfico da evolução do total de repetições e do maior peso por treino; os mesmos valores estão na tabela acima."
+      "Gráfico da evolução do total de repetições e do maior peso em todos os treinos com este exercício."
     );
     container.appendChild(canvas);
     return container;

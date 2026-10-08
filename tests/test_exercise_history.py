@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from app.models import Exercise, Workout, WorkoutExercise, WorkoutSet
@@ -31,6 +31,16 @@ def record_occurrence(session, exercise, workout_date, workout_name="Push", sets
     return workout
 
 
+def record_occurrence_with_created_at(session, exercise, workout_name, created_at):
+    workout = Workout(
+        date=date(2026, 10, 7),
+        name=workout_name,
+        created_at=created_at.replace(tzinfo=timezone.utc),
+    )
+    session.add(workout)
+    return record_occurrence(session, exercise, None, sets=[(10, "20")], workout=workout)
+
+
 def get_history(client, exercise):
     response = client.get(f"/exercises/{exercise.id}/history")
     assert response.status_code == 200
@@ -53,7 +63,12 @@ def test_history_of_exercise_without_occurrences_is_empty(client, session):
     data = get_history(client, exercise)
 
     assert data == {
-        "exercise": {"id": exercise.id, "name": "Supino 30º"},
+        "exercise": {
+            "id": exercise.id,
+            "name": "Supino 30º",
+            "muscle_group": "Peito",
+            "muscle_subgroup": "Peitoral clavicular",
+        },
         "history": [],
         "chart": {"labels": [], "workout_names": [], "repetitions": [], "max_weight_kg": []},
     }
@@ -177,6 +192,87 @@ def test_chart_uses_table_data_in_chronological_order(client, session):
     assert data["chart"]["max_weight_kg"] == [occurrence["max_weight_kg"] for occurrence in table_oldest_first]
 
 
+def test_history_returns_muscle_information_of_the_exercise(client, session):
+    exercise = Exercise(name="Pulldown", muscle_group="Costas", muscle_subgroup="Latíssimo do dorso")
+    session.add(exercise)
+    session.commit()
+
+    data = get_history(client, exercise)
+
+    assert data["exercise"] == {
+        "id": exercise.id,
+        "name": "Pulldown",
+        "muscle_group": "Costas",
+        "muscle_subgroup": "Latíssimo do dorso",
+    }
+
+
+def test_history_table_is_limited_to_five_most_recent_while_chart_keeps_everything(client, session):
+    exercise = create_exercise(session)
+    for day in range(1, 8):
+        record_occurrence(session, exercise, date(2026, 10, day), f"Treino {day}", sets=[(day, "20")])
+
+    data = get_history(client, exercise)
+
+    assert [occurrence["workout_name"] for occurrence in data["history"]] == [
+        "Treino 7",
+        "Treino 6",
+        "Treino 5",
+        "Treino 4",
+        "Treino 3",
+    ]
+    assert data["chart"]["labels"] == [f"2026-10-0{day}" for day in range(1, 8)]
+    assert data["chart"]["repetitions"] == [1, 2, 3, 4, 5, 6, 7]
+    # The table rows are the most recent end of the chart, in reverse.
+    most_recent_chart_points = list(reversed(data["chart"]["repetitions"]))[:5]
+    assert [occurrence["repetitions"] for occurrence in data["history"]] == most_recent_chart_points
+
+
+def test_same_date_occurrences_are_ordered_by_workout_creation_time(client, session):
+    exercise = create_exercise(session)
+    # Created later even though it has the lower id.
+    created_later = record_occurrence_with_created_at(session, exercise, "Criado depois", datetime(2026, 10, 7, 18, 0))
+    created_earlier = record_occurrence_with_created_at(session, exercise, "Criado antes", datetime(2026, 10, 7, 8, 0))
+    assert created_later.id < created_earlier.id
+
+    data = get_history(client, exercise)
+
+    assert [occurrence["workout_name"] for occurrence in data["history"]] == ["Criado depois", "Criado antes"]
+    assert data["chart"]["workout_names"] == ["Criado antes", "Criado depois"]
+
+
+def test_same_date_and_creation_time_fall_back_to_workout_id(client, session):
+    exercise = create_exercise(session)
+    same_moment = datetime(2026, 10, 7, 8, 0)
+    first = record_occurrence_with_created_at(session, exercise, "Primeiro", same_moment)
+    second = record_occurrence_with_created_at(session, exercise, "Segundo", same_moment)
+
+    data = get_history(client, exercise)
+
+    assert [occurrence["workout_id"] for occurrence in data["history"]] == [second.id, first.id]
+
+
+def test_history_has_a_single_endpoint(app):
+    history_rules = [rule.rule for rule in app.url_map.iter_rules() if "history" in rule.rule]
+
+    assert history_rules == ["/exercises/<int:exercise_id>/history"]
+
+
+def test_names_with_html_are_returned_as_plain_text(client, session):
+    exercise = create_exercise(session, "Supino <i>teste</i>")
+    record_occurrence(session, exercise, date(2026, 10, 7), "Upper <b>teste</b>", sets=[(10, "20")])
+
+    data = get_history(client, exercise)
+    category_page = client.get("/exercises/Peito").get_data(as_text=True)
+
+    # JSON keeps the literal text; the modal inserts it with textContent.
+    assert data["exercise"]["name"] == "Supino <i>teste</i>"
+    assert data["history"][0]["workout_name"] == "Upper <b>teste</b>"
+    # Server-rendered cards are escaped by Jinja.
+    assert "Supino &lt;i&gt;teste&lt;/i&gt;" in category_page
+    assert "<i>teste</i>" not in category_page
+
+
 def test_history_does_not_change_stored_data(client, session):
     exercise = create_exercise(session)
     record_occurrence(session, exercise, date(2026, 10, 7), sets=[(10, "20")])
@@ -206,16 +302,36 @@ def test_every_exercise_in_workout_has_a_history_button(client, session):
         assert f'Histórico<span class="visually-hidden"> de {exercise.name}</span>' in page
 
 
-def test_workout_page_contains_history_modal_with_title_and_close_button(client, session):
+def assert_exercise_modal_structure(page):
+    """The shared exercise modal: name, muscle information, history table and chart area."""
+    assert page.count('<dialog class="modal" id="exercise-history-dialog"') == 1
+    dialog = page.split('<dialog class="modal" id="exercise-history-dialog"')[1].split("</dialog>")[0]
+    assert 'aria-labelledby="exercise-history-title"' in dialog
+    assert '<h2 id="exercise-history-title" data-history-exercise-name></h2>' in dialog
+    assert 'data-history-close aria-label="Fechar">×</button>' in dialog
+    # Order inside the modal: muscle information, then the history section.
+    assert dialog.index("<dt>Grupo muscular</dt>") < dialog.index("<dt>Principal músculo</dt>")
+    assert dialog.index("<dt>Principal músculo</dt>") < dialog.index(">Histórico</h3>")
+    assert "data-exercise-muscle-group" in dialog
+    assert "data-exercise-muscle-subgroup" in dialog
+    assert "data-history-body" in dialog
+
+
+def test_workout_page_contains_exercise_modal(client, session):
     exercise = create_exercise(session)
     workout = record_occurrence(session, exercise, date(2026, 10, 7))
 
     page = client.get(f"/workouts/{workout.id}").get_data(as_text=True)
 
-    assert '<dialog class="modal" id="exercise-history-dialog" aria-labelledby="exercise-history-title">' in page
-    assert '<h2 id="exercise-history-title">Histórico — <span data-history-exercise-name></span></h2>' in page
-    assert 'data-history-close aria-label="Fechar histórico">×</button>' in page
-    assert "data-history-body" in page
+    assert_exercise_modal_structure(page)
+
+
+def test_library_category_page_contains_the_same_exercise_modal(client, session):
+    create_exercise(session)
+
+    page = client.get("/exercises/Peito").get_data(as_text=True)
+
+    assert_exercise_modal_structure(page)
 
 
 def test_workout_page_loads_chart_library_and_history_script(client, session):
@@ -248,3 +364,7 @@ def test_history_script_handles_closing_loading_and_empty_states(client):
     assert "Nenhum histórico disponível para este exercício." in script
     # The table is built from the JSON, never from HTML strings.
     assert ".innerHTML" not in script
+    # Name and muscle information come from the JSON of the opened exercise.
+    assert "exerciseNameElement.textContent = data.exercise.name" in script
+    assert "muscleGroupElement.textContent = data.exercise.muscle_group" in script
+    assert "muscleSubgroupElement.textContent = data.exercise.muscle_subgroup" in script

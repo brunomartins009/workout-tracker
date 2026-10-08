@@ -1,0 +1,33 @@
+{#
+  Exercise modal shared by the workout page and the library category page.
+  Every element with data-history-url opens it; exercise_history.js fills it
+  with the exercise returned by GET /exercises/<id>/history.
+
+  The native <dialog> opened with showModal() blocks the page behind it, keeps
+  focus inside and closes on Escape.
+#}
+<dialog class="modal" id="exercise-history-dialog" aria-labelledby="exercise-history-title">
+  <div class="modal-content">
+    <header class="modal-header">
+      <h2 id="exercise-history-title" data-history-exercise-name></h2>
+      <button class="modal-close" type="button" data-history-close aria-label="Fechar">×</button>
+    </header>
+    <div class="modal-body">
+      {# Hidden until the exercise data arrives. #}
+      <dl class="exercise-info" data-exercise-info hidden>
+        <div>
+          <dt>Grupo muscular</dt>
+          <dd data-exercise-muscle-group></dd>
+        </div>
+        <div>
+          <dt>Principal músculo</dt>
+          <dd data-exercise-muscle-subgroup></dd>
+        </div>
+      </dl>
+      <section class="exercise-history" aria-labelledby="exercise-history-heading">
+        <h3 id="exercise-history-heading">Histórico</h3>
+        <div data-history-body aria-live="polite"></div>
+      </section>
+    </div>
+  </div>
+</dialog>

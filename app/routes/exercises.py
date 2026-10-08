@@ -8,22 +8,54 @@ from app.models import Exercise, Workout, WorkoutExercise, WorkoutSet
 
 bp = Blueprint("exercises", __name__, url_prefix="/exercises")
 
+# The history table shows only the most recent occurrences; the chart keeps
+# the complete history.
+HISTORY_TABLE_LIMIT = 5
+
 
 # The exercise library is read-only in the UI: exercises are managed in
 # app/exercise_library.py and loaded with `flask sync-exercise-library`.
 @bp.get("")
 def list_exercises():
     exercises = db.session.scalars(select(Exercise)).all()
+    # Categories are derived from Exercise.muscle_group; group_exercises gives
+    # them the same order used everywhere else in the library.
+    categories = [
+        (group, sum(len(subgroup_exercises) for _, subgroup_exercises in subgroups))
+        for group, subgroups in group_exercises(exercises)
+    ]
     return render_template(
         "exercises/list.html",
-        exercise_groups=group_exercises(exercises),
+        categories=categories,
         exercise_count=len(exercises),
+    )
+
+
+@bp.get("/<muscle_group>")
+def exercise_category(muscle_group):
+    exercises = db.session.scalars(
+        select(Exercise).where(Exercise.muscle_group == muscle_group)
+    ).all()
+    if not exercises:
+        abort(404)
+
+    # A single group comes back, already ordered by subgroup and then by name.
+    [(_, subgroups)] = group_exercises(exercises)
+    ordered_exercises = [
+        exercise
+        for _, subgroup_exercises in subgroups
+        for exercise in subgroup_exercises
+    ]
+    return render_template(
+        "exercises/category.html",
+        muscle_group=muscle_group,
+        exercises=ordered_exercises,
     )
 
 
 @bp.get("/<int:exercise_id>/history")
 def exercise_history(exercise_id):
-    """Return every occurrence of the exercise as JSON for the history modal."""
+    """Return the exercise and its occurrences as JSON for the exercise modal."""
     exercise = db.session.get(Exercise, exercise_id)
     if exercise is None:
         abort(404)
@@ -44,10 +76,10 @@ def exercise_history(exercise_id):
         .outerjoin(WorkoutSet, WorkoutSet.workout_exercise_id == WorkoutExercise.id)
         .where(WorkoutExercise.exercise_id == exercise.id)
         .group_by(WorkoutExercise.id)
-        .order_by(Workout.date.desc(), Workout.created_at.desc())
+        .order_by(Workout.date.desc(), Workout.created_at.desc(), Workout.id.desc())
     ).all()
 
-    history = [
+    occurrences = [
         {
             "workout_id": workout_id,
             "date": workout_date.isoformat(),
@@ -61,9 +93,9 @@ def exercise_history(exercise_id):
         for workout_id, workout_date, workout_name, set_count, total_repetitions, max_weight in rows
     ]
 
-    # The chart reads the same occurrences as the table, oldest first. Points of
-    # occurrences without sets are null so the chart does not drop to zero.
-    chronological = list(reversed(history))
+    # The chart uses every occurrence, oldest first. Points of occurrences
+    # without sets are null so the chart does not drop to zero.
+    chronological = list(reversed(occurrences))
     chart = {
         "labels": [occurrence["date"] for occurrence in chronological],
         "workout_names": [occurrence["workout_name"] for occurrence in chronological],
@@ -76,8 +108,14 @@ def exercise_history(exercise_id):
 
     return jsonify(
         {
-            "exercise": {"id": exercise.id, "name": exercise.name},
-            "history": history,
+            "exercise": {
+                "id": exercise.id,
+                "name": exercise.name,
+                "muscle_group": exercise.muscle_group,
+                "muscle_subgroup": exercise.muscle_subgroup,
+            },
+            # Most recent first, limited for the table.
+            "history": occurrences[:HISTORY_TABLE_LIMIT],
             "chart": chart,
         }
     )

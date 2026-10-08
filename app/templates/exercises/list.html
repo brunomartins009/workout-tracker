@@ -10,30 +10,17 @@
     </div>
   </header>
 
-  {% if exercise_groups %}
-    <nav class="group-index" aria-label="Grupos musculares">
-      {% for group, _subgroups in exercise_groups %}
-        <a href="#group-{{ loop.index }}">{{ group }}</a>
+  {% if categories %}
+    <ul class="card-grid" aria-label="Grupos musculares">
+      {% for muscle_group, count in categories %}
+        <li>
+          <a class="library-card" href="{{ url_for('exercises.exercise_category', muscle_group=muscle_group) }}">
+            <span class="library-card-title{% if muscle_group == 'XXXXX' %} unclassified{% endif %}">{{ muscle_group }}</span>
+            <span class="library-card-detail category-count">{{ count }} {{ 'exercício' if count == 1 else 'exercícios' }}</span>
+          </a>
+        </li>
       {% endfor %}
-    </nav>
-
-    {% for group, subgroups in exercise_groups %}
-      <section class="section library-group" id="group-{{ loop.index }}" aria-labelledby="group-{{ loop.index }}-title">
-        <h2 id="group-{{ loop.index }}-title" class="library-group-title{% if group == 'XXXXX' %} unclassified{% endif %}">{{ group }}</h2>
-        <div class="panel">
-          {% for subgroup, exercises in subgroups %}
-            <div class="library-subgroup">
-              <h3{% if subgroup == 'XXXXX' %} class="unclassified"{% endif %}>{{ subgroup }}</h3>
-              <ul class="library-exercises">
-                {% for exercise in exercises %}
-                  <li>{{ exercise.name }}</li>
-                {% endfor %}
-              </ul>
-            </div>
-          {% endfor %}
-        </div>
-      </section>
-    {% endfor %}
+    </ul>
   {% else %}
     <div class="panel empty-state">
       <p>Nenhum exercício na biblioteca.</p>

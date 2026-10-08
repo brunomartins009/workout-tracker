@@ -176,20 +176,7 @@
     {% endif %}
   </section>
 
-  {#
-    One dialog is reused by every "Histórico" button. The native <dialog> opened
-    with showModal() blocks the page behind it, keeps focus inside and closes on
-    Escape; exercise_history.js fills it with the data of the chosen exercise.
-  #}
-  <dialog class="modal" id="exercise-history-dialog" aria-labelledby="exercise-history-title">
-    <div class="modal-content">
-      <header class="modal-header">
-        <h2 id="exercise-history-title">Histórico — <span data-history-exercise-name></span></h2>
-        <button class="modal-close" type="button" data-history-close aria-label="Fechar histórico">×</button>
-      </header>
-      <div class="modal-body" data-history-body aria-live="polite"></div>
-    </div>
-  </dialog>
+  {% include "partials/exercise_modal.html" %}
 {% endblock %}
 
 {% block scripts %}
