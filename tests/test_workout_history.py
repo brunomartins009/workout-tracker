@@ -1,6 +1,6 @@
 import re
 from contextlib import contextmanager
-from datetime import date, datetime, timezone
+from datetime import date
 from decimal import Decimal
 
 from sqlalchemy import event
@@ -42,18 +42,6 @@ def add_exercise(session, workout, name, position, set_count=0):
     return workout_exercise
 
 
-def history_row(page, workout):
-    match = re.search(rf'<tr id="workout-{workout.id}">(.*?)</tr>', page, re.DOTALL)
-    assert match is not None, f"history row for workout {workout.id} not found"
-    return match.group(1)
-
-
-def cell_value(row, css_class):
-    match = re.search(rf'<td class="{css_class}[^"]*">(\d+)</td>', row)
-    assert match is not None, f"cell {css_class} not found"
-    return int(match.group(1))
-
-
 def rendered_sets(page):
     """Return (position, repetitions, weight) of each set row, in page order."""
     return re.findall(
@@ -84,119 +72,21 @@ def count_queries():
         event.remove(db.engine, "before_cursor_execute", before_cursor_execute)
 
 
-# History
+# Calendar
 
 
-def test_history_without_workouts_shows_empty_state(client):
-    response = client.get("/workouts")
-
-    assert response.status_code == 200
-    assert "Nenhum treino cadastrado." in response.get_data(as_text=True)
-
-
-def test_history_shows_multiple_workouts_with_name_and_date(client, session):
-    push = create_workout(session, date(2026, 10, 1), "Push")
-    pull = create_workout(session, date(2026, 10, 3), "Pull")
-
-    page = client.get("/workouts").get_data(as_text=True)
-
-    assert "Push" in history_row(page, push)
-    assert "01/10/2026" in history_row(page, push)
-    assert "Pull" in history_row(page, pull)
-    assert "03/10/2026" in history_row(page, pull)
-
-
-def test_history_orders_workouts_by_most_recent_date_first(client, session):
-    oldest = create_workout(session, date(2026, 9, 1), "Treino antigo")
-    newest = create_workout(session, date(2026, 10, 1), "Treino recente")
-    middle = create_workout(session, date(2026, 9, 15), "Treino do meio")
-
-    page = client.get("/workouts").get_data(as_text=True)
-
-    assert page.index(f'id="workout-{newest.id}"') < page.index(f'id="workout-{middle.id}"')
-    assert page.index(f'id="workout-{middle.id}"') < page.index(f'id="workout-{oldest.id}"')
-
-
-def test_history_orders_same_date_by_creation_time_then_id(client, session):
-    same_moment = datetime(2026, 10, 1, 8, 0, tzinfo=timezone.utc)
-    created_later = Workout(date=date(2026, 10, 1), name="Criado depois", created_at=datetime(2026, 10, 1, 18, 0, tzinfo=timezone.utc))
-    first_same_moment = Workout(date=date(2026, 10, 1), name="Mesmo instante 1", created_at=same_moment)
-    second_same_moment = Workout(date=date(2026, 10, 1), name="Mesmo instante 2", created_at=same_moment)
-    for workout in (created_later, first_same_moment, second_same_moment):
-        session.add(workout)
-        session.commit()
-
-    page = client.get("/workouts").get_data(as_text=True)
-
-    positions = [
-        page.index(f'id="workout-{workout.id}"')
-        for workout in (created_later, second_same_moment, first_same_moment)
-    ]
-    assert positions == sorted(positions)
-
-
-def test_history_shows_exercise_and_set_counts(client, session):
-    workout = create_workout(session)
-    add_exercise(session, workout, "Supino", position=1, set_count=3)
-    add_exercise(session, workout, "Remada", position=2, set_count=2)
-    add_exercise(session, workout, "Prancha", position=3, set_count=0)
-
-    row = history_row(client.get("/workouts").get_data(as_text=True), workout)
-
-    assert cell_value(row, "exercise-count") == 3
-    assert cell_value(row, "set-count") == 5
-
-
-def test_history_shows_zero_counts_for_empty_workout(client, session):
-    workout = create_workout(session)
-
-    row = history_row(client.get("/workouts").get_data(as_text=True), workout)
-
-    assert cell_value(row, "exercise-count") == 0
-    assert cell_value(row, "set-count") == 0
-
-
-def test_history_counts_are_isolated_between_workouts(client, session):
-    first = create_workout(session, date(2026, 10, 1), "Push")
-    second = create_workout(session, date(2026, 10, 2), "Pull")
-    add_exercise(session, first, "Supino", position=1, set_count=4)
-    add_exercise(session, second, "Supino", position=1, set_count=1)
-    add_exercise(session, second, "Remada", position=2, set_count=2)
-
-    page = client.get("/workouts").get_data(as_text=True)
-    first_row = history_row(page, first)
-    second_row = history_row(page, second)
-
-    assert cell_value(first_row, "exercise-count") == 1
-    assert cell_value(first_row, "set-count") == 4
-    assert cell_value(second_row, "exercise-count") == 2
-    assert cell_value(second_row, "set-count") == 3
-
-
-def test_history_links_to_workout_detail_and_keeps_actions(client, session):
-    workout = create_workout(session)
-
-    page = client.get("/workouts").get_data(as_text=True)
-    row = history_row(page, workout)
-
-    assert f'href="/workouts/{workout.id}"' in row
-    assert f'href="/workouts/{workout.id}/edit"' in row
-    assert f'action="/workouts/{workout.id}/delete"' in row
-    assert 'href="/workouts/new"' in page
-
-
-def test_history_query_count_does_not_grow_with_workouts(client, session):
+def test_calendar_query_count_does_not_grow_with_workouts(client, session):
     workout = create_workout(session, date(2026, 10, 1), "Push")
     add_exercise(session, workout, "Supino", position=1, set_count=2)
     with count_queries() as statements_with_one_workout:
-        client.get("/workouts")
+        client.get("/workouts?month=2026-10")
 
     for day in range(2, 6):
         workout = create_workout(session, date(2026, 10, day), f"Treino {day}")
         add_exercise(session, workout, "Supino", position=1, set_count=2)
         add_exercise(session, workout, f"Remada {day}", position=2, set_count=3)
     with count_queries() as statements_with_many_workouts:
-        client.get("/workouts")
+        client.get("/workouts?month=2026-10")
 
     assert len(statements_with_many_workouts) == len(statements_with_one_workout)
 

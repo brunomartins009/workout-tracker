@@ -45,12 +45,6 @@ def test_workout_list_shows_primary_action(client):
     assert "+ Novo treino" in workouts_page
 
 
-def test_empty_workout_list_offers_next_action(client):
-    workouts_page = client.get("/workouts").get_data(as_text=True)
-
-    assert "Registrar primeiro treino" in workouts_page
-
-
 def test_success_flash_is_rendered_as_status_message(client):
     response = client.post(
         "/workouts", data={"date": "2026-10-06", "name": "Push"}, follow_redirects=True

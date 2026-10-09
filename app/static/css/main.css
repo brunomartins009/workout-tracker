@@ -534,14 +534,136 @@ select:focus-visible {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-  padding: var(--space-4) var(--space-5);
-  border-bottom: 1px solid var(--color-border);
+  padding: var(--space-2) var(--space-5) var(--space-2) var(--space-2);
 }
 
-.exercise-card-header h3 {
+.exercise-card-title {
+  flex: 1;
+  min-width: 0;
+}
+
+/* The whole title area expands/collapses the exercise; the actions sit next to it. */
+.exercise-toggle {
   display: flex;
   align-items: center;
   gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-small);
+  background: none;
+  color: var(--color-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.exercise-toggle:hover {
+  background: var(--color-surface-muted);
+}
+
+.exercise-toggle-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.exercise-toggle-name {
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.exercise-toggle-muscles {
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+  font-weight: 400;
+}
+
+.exercise-toggle-icon {
+  flex-shrink: 0;
+  margin-left: auto;
+  color: var(--color-text-muted);
+  transition: transform 0.15s ease;
+}
+
+.exercise-toggle[aria-expanded="true"] .exercise-toggle-icon {
+  transform: rotate(180deg);
+}
+
+.exercise-card-body {
+  border-top: 1px solid var(--color-border);
+}
+
+/* Messages of set changes made without reloading the page. */
+.set-feedback {
+  margin: var(--space-3) var(--space-5) 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-small);
+  font-size: 0.9rem;
+}
+
+.set-feedback:empty {
+  display: none;
+}
+
+.set-feedback-success {
+  background: var(--color-success-soft);
+  color: var(--color-success);
+}
+
+.set-feedback-error {
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+
+.exercise-card[aria-busy="true"] [data-sets] {
+  opacity: 0.6;
+}
+
+/* Small icon-only buttons and links (edit/delete a set). */
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: 0;
+  border-radius: var(--radius-small);
+  background: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.icon-button:hover {
+  background: var(--color-surface-muted);
+  color: var(--color-text);
+}
+
+.icon-button-danger:hover {
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+
+.icon-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.set-edit-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
+}
+
+.set-edit-form .form-field {
+  flex: 0 1 9rem;
+  margin: 0;
+}
+
+.set-edit-label {
+  align-self: center;
+  font-weight: 600;
 }
 
 .position-badge {
@@ -697,6 +819,101 @@ a.library-card .library-card-title {
   margin-bottom: var(--space-3);
 }
 
+/* ---------- Workout calendar ---------- */
+
+.calendar {
+  padding: var(--space-5);
+}
+
+.calendar-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-5);
+}
+
+.calendar-header h2 {
+  min-width: 12rem;
+  text-align: center;
+}
+
+.calendar-today {
+  margin-top: var(--space-2);
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.calendar-grid {
+  width: 100%;
+  margin-top: var(--space-4);
+  border-collapse: separate;
+  border-spacing: var(--space-1);
+  table-layout: fixed;
+}
+
+.calendar-grid th {
+  padding-bottom: var(--space-2);
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.calendar-day {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  width: 100%;
+  min-height: 4.5rem;
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-small);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  text-align: left;
+}
+
+.calendar-day-outside {
+  border-color: transparent;
+  background: none;
+  color: var(--color-border-strong);
+}
+
+/* Days with workouts: highlighted and clickable. */
+.calendar-day-workout {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.calendar-day-workout:hover {
+  background: #dbe5fb;
+  color: var(--color-text);
+}
+
+.calendar-day-number {
+  font-weight: 600;
+}
+
+.calendar-day-detail {
+  overflow: hidden;
+  color: var(--color-accent);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.day-workouts-list {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
 /* ---------- Modal ---------- */
 
 /* Keeps the page behind an open modal from scrolling. */
@@ -715,6 +932,10 @@ body.modal-open {
   background: var(--color-surface);
   color: var(--color-text);
   box-shadow: 0 12px 32px rgba(16, 24, 40, 0.18);
+}
+
+.modal-small {
+  width: min(28rem, calc(100% - 2rem));
 }
 
 .modal::backdrop {

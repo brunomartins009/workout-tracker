@@ -4,50 +4,99 @@
 
 {% block content %}
   <header class="page-header">
-    <div>
-      <h1>Histórico de treinos</h1>
-      <p class="page-subtitle">Treinos mais recentes primeiro.</p>
-    </div>
+    <h1>Treinos</h1>
     <a class="btn btn-primary" href="{{ url_for('workouts.new_workout') }}">+ Novo treino</a>
   </header>
 
-  {% if workout_rows %}
-    <div class="panel table-wrapper">
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th scope="col">Data</th>
-            <th scope="col">Treino</th>
-            <th scope="col" class="numeric">Exercícios</th>
-            <th scope="col" class="numeric">Séries</th>
-            <th scope="col" class="row-actions"><span class="visually-hidden">Ações</span></th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for workout, exercise_count, set_count in workout_rows %}
-            <tr id="workout-{{ workout.id }}">
-              <td><time datetime="{{ workout.date.isoformat() }}">{{ workout.date.strftime('%d/%m/%Y') }}</time></td>
-              <td><a class="primary-link" href="{{ url_for('workouts.workout_detail', workout_id=workout.id) }}">{{ workout.name }}</a></td>
-              <td class="exercise-count numeric">{{ exercise_count }}</td>
-              <td class="set-count numeric">{{ set_count }}</td>
-              <td class="row-actions">
-                <div class="actions">
-                  <a class="btn btn-secondary btn-small" href="{{ url_for('workouts.workout_detail', workout_id=workout.id) }}">Abrir<span class="visually-hidden"> {{ workout.name }}</span></a>
-                  <a class="btn btn-secondary btn-small" href="{{ url_for('workouts.edit_workout', workout_id=workout.id) }}">Editar<span class="visually-hidden"> {{ workout.name }}</span></a>
-                  <form class="inline-form" action="{{ url_for('workouts.delete_workout', workout_id=workout.id) }}" method="post">
-                    <button class="btn btn-danger btn-small" type="submit">Excluir<span class="visually-hidden"> {{ workout.name }}</span></button>
-                  </form>
-                </div>
-              </td>
-            </tr>
+  <section class="panel calendar" aria-labelledby="calendar-title">
+    <div class="calendar-header">
+      <a class="btn btn-secondary btn-small btn-icon" href="{{ url_for('workouts.list_workouts', month=previous_month_param) }}" aria-label="Mês anterior" title="Mês anterior">←</a>
+      <h2 id="calendar-title">{{ month_title }}</h2>
+      <a class="btn btn-secondary btn-small btn-icon" href="{{ url_for('workouts.list_workouts', month=next_month_param) }}" aria-label="Mês seguinte" title="Mês seguinte">→</a>
+    </div>
+    {% if not is_current_month %}
+      <p class="calendar-today"><a href="{{ url_for('workouts.list_workouts') }}">Ir para o mês atual</a></p>
+    {% endif %}
+
+    <table class="calendar-grid">
+      <thead>
+        <tr>
+          {% for weekday_name in weekday_names %}
+            <th scope="col">{{ weekday_name }}</th>
           {% endfor %}
-        </tbody>
-      </table>
+        </tr>
+      </thead>
+      <tbody>
+        {% for week in weeks %}
+          <tr>
+            {% for day in week %}
+              {% set label = day.strftime('%d/%m/%Y') %}
+              {# Days of the adjacent months only complete the grid: no workouts, no links. #}
+              {% set day_workouts = workouts_by_day.get(day, []) if day.month == month.month else [] %}
+              <td>
+                {% if day.month != month.month %}
+                  <span class="calendar-day calendar-day-outside">{{ day.day }}</span>
+                {% elif day_workouts|length == 1 %}
+                  {% set workout = day_workouts[0] %}
+                  <a
+                    class="calendar-day calendar-day-workout"
+                    href="{{ url_for('workouts.workout_detail', workout_id=workout.id) }}"
+                    data-date="{{ day.isoformat() }}"
+                    aria-label="{{ label }}: {{ workout.name }}"
+                  >
+                    <span class="calendar-day-number">{{ day.day }}</span>
+                    <span class="calendar-day-detail">{{ workout.name }}</span>
+                  </a>
+                {% elif day_workouts %}
+                  <button
+                    class="calendar-day calendar-day-workout"
+                    type="button"
+                    aria-haspopup="dialog"
+                    data-date="{{ day.isoformat() }}"
+                    data-day-workouts="day-{{ day.isoformat() }}"
+                    data-day-label="{{ label }}"
+                    aria-label="{{ label }}: {{ day_workouts|length }} treinos"
+                  >
+                    <span class="calendar-day-number">{{ day.day }}</span>
+                    <span class="calendar-day-detail">{{ day_workouts|length }} treinos</span>
+                  </button>
+                  {#
+                    The workout cards of the day are rendered (and escaped) here by
+                    Jinja; workouts.js copies them into the dialog.
+                  #}
+                  <template id="day-{{ day.isoformat() }}">
+                    {% for workout in day_workouts %}
+                      <li>
+                        <a class="library-card" href="{{ url_for('workouts.workout_detail', workout_id=workout.id) }}">
+                          <span class="library-card-title">{{ workout.name }}</span>
+                        </a>
+                      </li>
+                    {% endfor %}
+                  </template>
+                {% else %}
+                  <span class="calendar-day">{{ day.day }}</span>
+                {% endif %}
+              </td>
+            {% endfor %}
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <dialog class="modal modal-small" id="day-workouts-dialog" aria-labelledby="day-workouts-title">
+    <div class="modal-content">
+      <header class="modal-header">
+        <h2 id="day-workouts-title">Treinos de <span data-day-workouts-label></span></h2>
+        <button class="modal-close" type="button" data-day-workouts-close aria-label="Fechar">×</button>
+      </header>
+      <div class="modal-body">
+        <ul class="day-workouts-list" data-day-workouts-list></ul>
+      </div>
     </div>
-  {% else %}
-    <div class="panel empty-state">
-      <p>Nenhum treino cadastrado.</p>
-      <p><a class="btn btn-primary" href="{{ url_for('workouts.new_workout') }}">Registrar primeiro treino</a></p>
-    </div>
-  {% endif %}
+  </dialog>
+{% endblock %}
+
+{% block scripts %}
+  <script src="{{ url_for('static', filename='js/workouts.js') }}"></script>
 {% endblock %}

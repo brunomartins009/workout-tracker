@@ -1,0 +1,110 @@
+{#
+  Sets area of one exercise on the workout page: sets table, inline edit rows
+  and the add-set form.
+
+  Rendered inside the workout page and, after a set is added, edited or
+  deleted with fetch(), returned by the set routes so workouts.js can replace
+  just this element. Expects: workout, workout_exercise, set_error,
+  set_form_values and failed_workout_exercise_id.
+#}
+{% from "partials/icons.html" import edit_icon, delete_icon %}
+{% set ordered_sets = workout_exercise.sets|sort(attribute='position') %}
+{% set add_set_failed = set_error and failed_workout_exercise_id == workout_exercise.id %}
+{#
+  The add-set form starts with the previous set's values because sets of the
+  same exercise usually repeat them; after a failed submission it shows what
+  the user typed instead.
+#}
+{% if add_set_failed %}
+  {% set default_repetitions = set_form_values.get('repetitions', '') %}
+  {% set default_weight_kg = set_form_values.get('weight_kg', '') %}
+{% elif ordered_sets %}
+  {% set default_repetitions = (ordered_sets|last).repetitions %}
+  {% set default_weight_kg = (ordered_sets|last).weight_kg %}
+{% else %}
+  {% set default_repetitions = '' %}
+  {% set default_weight_kg = '' %}
+{% endif %}
+
+<div class="exercise-sets" data-sets>
+  {% if ordered_sets %}
+    <div class="table-wrapper">
+      <table class="data-table sets-table">
+        <caption class="visually-hidden">Séries de {{ workout_exercise.exercise.name }}</caption>
+        <thead>
+          <tr>
+            <th scope="col">Série</th>
+            <th scope="col" class="numeric">Repetições</th>
+            <th scope="col" class="numeric">Peso</th>
+            <th scope="col" class="row-actions"><span class="visually-hidden">Ações</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for workout_set in ordered_sets %}
+            <tr id="set-{{ workout_set.id }}">
+              <td class="set-position">{{ workout_set.position }}</td>
+              <td class="set-repetitions numeric">{{ workout_set.repetitions }}</td>
+              <td class="set-weight numeric">{{ workout_set.weight_kg }} kg</td>
+              <td class="row-actions">
+                <div class="actions">
+                  {# Without JavaScript the link opens the edit page; workouts.js shows the inline row instead. #}
+                  <a
+                    class="icon-button"
+                    href="{{ url_for('workouts.edit_workout_set', workout_id=workout.id, exercise_id=workout_exercise.exercise_id, set_id=workout_set.id) }}"
+                    data-edit-set="set-{{ workout_set.id }}-edit"
+                    aria-label="Editar série {{ workout_set.position }}"
+                    title="Editar série"
+                  >{{ edit_icon() }}</a>
+                  <form class="inline-form" action="{{ url_for('workouts.delete_workout_set', workout_id=workout.id, exercise_id=workout_exercise.exercise_id, set_id=workout_set.id) }}" method="post" data-set-form>
+                    <button
+                      class="icon-button icon-button-danger"
+                      type="submit"
+                      aria-label="Excluir série {{ workout_set.position }}"
+                      title="Excluir série"
+                    >{{ delete_icon() }}</button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+            <tr class="set-edit-row" id="set-{{ workout_set.id }}-edit" hidden>
+              <td colspan="4">
+                <form class="set-edit-form" action="{{ url_for('workouts.update_workout_set', workout_id=workout.id, exercise_id=workout_exercise.exercise_id, set_id=workout_set.id) }}" method="post" data-set-form>
+                  <span class="set-edit-label">Série {{ workout_set.position }}</span>
+                  <div class="form-field">
+                    <label for="edit-repetitions-{{ workout_set.id }}">Repetições</label>
+                    <input id="edit-repetitions-{{ workout_set.id }}" name="repetitions" type="number" min="1" inputmode="numeric" value="{{ workout_set.repetitions }}" required>
+                  </div>
+                  <div class="form-field">
+                    <label for="edit-weight-{{ workout_set.id }}">Peso (kg)</label>
+                    <input id="edit-weight-{{ workout_set.id }}" name="weight_kg" type="number" min="0" step="0.01" inputmode="decimal" value="{{ workout_set.weight_kg }}" required>
+                  </div>
+                  <button class="btn btn-primary btn-small" type="submit">Salvar</button>
+                  <button class="btn btn-secondary btn-small" type="button" data-cancel-edit>Cancelar</button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="empty-sets muted">Nenhuma série registrada.</p>
+  {% endif %}
+
+  <div class="add-set">
+    {% if add_set_failed %}
+      <p class="alert alert-error" role="alert">{{ set_error }}</p>
+    {% endif %}
+    <form class="add-set-form" action="{{ url_for('workouts.add_workout_set', workout_id=workout.id, exercise_id=workout_exercise.exercise_id) }}" method="post" data-set-form>
+      <div class="form-field">
+        <label for="repetitions-{{ workout_exercise.id }}">Repetições</label>
+        <input id="repetitions-{{ workout_exercise.id }}" name="repetitions" type="number" min="1" inputmode="numeric" value="{{ default_repetitions }}" required>
+      </div>
+      <div class="form-field">
+        <label for="weight-{{ workout_exercise.id }}">Peso (kg)</label>
+        <input id="weight-{{ workout_exercise.id }}" name="weight_kg" type="number" min="0" step="0.01" inputmode="decimal" value="{{ default_weight_kg }}" required>
+      </div>
+      <button class="btn btn-primary" type="submit">Adicionar série</button>
+    </form>
+  </div>
+</div>

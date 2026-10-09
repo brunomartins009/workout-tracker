@@ -1,7 +1,8 @@
-from datetime import date
+import calendar
+from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 
-from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
+from flask import Blueprint, abort, flash, jsonify, redirect, render_template, request, url_for
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload, selectinload
@@ -13,25 +14,57 @@ from app.models import Exercise, Workout, WorkoutExercise, WorkoutSet
 
 bp = Blueprint("workouts", __name__, url_prefix="/workouts")
 
+MONTH_NAMES = (
+    "Janeiro",
+    "Fevereiro",
+    "Março",
+    "Abril",
+    "Maio",
+    "Junho",
+    "Julho",
+    "Agosto",
+    "Setembro",
+    "Outubro",
+    "Novembro",
+    "Dezembro",
+)
+WEEKDAY_NAMES = ("Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom")
+
+SET_VALIDATION_ERROR = "Informe repetições positivas e um peso válido com até duas casas decimais."
+
 
 @bp.get("")
 def list_workouts():
-    # A single aggregate query returns each workout with its counts, so the
-    # history page does not issue one extra query per workout (N+1).
-    # The outer joins keep workouts that have no exercises or no sets; DISTINCT
-    # is needed because joining sets repeats each exercise once per set.
-    workout_rows = db.session.execute(
-        select(
-            Workout,
-            func.count(func.distinct(WorkoutExercise.id)).label("exercise_count"),
-            func.count(WorkoutSet.id).label("set_count"),
-        )
-        .outerjoin(WorkoutExercise, WorkoutExercise.workout_id == Workout.id)
-        .outerjoin(WorkoutSet, WorkoutSet.workout_exercise_id == WorkoutExercise.id)
-        .group_by(Workout.id)
-        .order_by(Workout.date.desc(), Workout.created_at.desc(), Workout.id.desc())
+    current_month = date.today().replace(day=1)
+    month = _parse_month(request.args.get("month")) or current_month
+    next_month = (month + timedelta(days=31)).replace(day=1)
+    previous_month = (month - timedelta(days=1)).replace(day=1)
+
+    # Only what the calendar needs: id, date and name of the workouts of the
+    # displayed month. Workouts on the same day keep the order used elsewhere
+    # (most recently created first, then highest id).
+    workouts = db.session.execute(
+        select(Workout.id, Workout.date, Workout.name)
+        .where(Workout.date >= month, Workout.date < next_month)
+        .order_by(Workout.date, Workout.created_at.desc(), Workout.id.desc())
     ).all()
-    return render_template("workouts/list.html", workout_rows=workout_rows)
+    workouts_by_day = {}
+    for workout in workouts:
+        workouts_by_day.setdefault(workout.date, []).append(workout)
+
+    return render_template(
+        "workouts/list.html",
+        month=month,
+        month_title=f"{MONTH_NAMES[month.month - 1]} {month.year}",
+        # Weeks start on Monday and include the days of the adjacent months
+        # needed to complete the first and last weeks.
+        weeks=calendar.Calendar(firstweekday=calendar.MONDAY).monthdatescalendar(month.year, month.month),
+        weekday_names=WEEKDAY_NAMES,
+        workouts_by_day=workouts_by_day,
+        previous_month_param=_month_param(previous_month),
+        next_month_param=_month_param(next_month),
+        is_current_month=month == current_month,
+    )
 
 
 @bp.get("/<int:workout_id>")
@@ -61,7 +94,7 @@ def create_workout():
         )
 
     flash("Treino criado com sucesso.", "success")
-    return redirect(url_for("workouts.list_workouts"))
+    return redirect(url_for("workouts.workout_detail", workout_id=workout.id))
 
 
 @bp.get("/<int:workout_id>/edit")
@@ -92,7 +125,7 @@ def update_workout(workout_id):
         )
 
     flash("Treino atualizado com sucesso.", "success")
-    return redirect(url_for("workouts.list_workouts"))
+    return redirect(url_for("workouts.workout_detail", workout_id=workout.id))
 
 
 @bp.post("/<int:workout_id>/delete")
@@ -140,10 +173,17 @@ def add_workout_exercise(workout_id):
     except IntegrityError:
         db.session.rollback()
         flash("Este exercício já foi adicionado ao treino.", "error")
-    else:
-        flash("Exercício adicionado ao treino.", "success")
+        return redirect(url_for("workouts.workout_detail", workout_id=workout_id))
 
-    return redirect(url_for("workouts.workout_detail", workout_id=workout_id))
+    flash("Exercício adicionado ao treino.", "success")
+    # The anchor makes the workout page open (expand) the new exercise.
+    return redirect(
+        url_for(
+            "workouts.workout_detail",
+            workout_id=workout_id,
+            _anchor=f"exercise-{workout_exercise.id}",
+        )
+    )
 
 
 @bp.post("/<int:workout_id>/exercises/<int:exercise_id>/delete")
@@ -227,14 +267,18 @@ def add_workout_set(workout_id, exercise_id):
         db.session.commit()
     except (InvalidOperation, ValueError):
         db.session.rollback()
+        if _wants_json():
+            return _set_error_json(SET_VALIDATION_ERROR)
         return _render_workout_detail(
             workout,
-            set_error="Informe repetições positivas e um peso válido com até duas casas decimais.",
+            set_error=SET_VALIDATION_ERROR,
             set_form_values={"repetitions": repetitions, "weight_kg": weight_kg},
             failed_workout_exercise_id=workout_exercise.id,
         )
     except IntegrityError:
         db.session.rollback()
+        if _wants_json():
+            return _set_error_json("Não foi possível adicionar a série. Tente novamente.")
         return _render_workout_detail(
             workout,
             set_error="Não foi possível adicionar a série. Tente novamente.",
@@ -242,6 +286,8 @@ def add_workout_set(workout_id, exercise_id):
             failed_workout_exercise_id=workout_exercise.id,
         )
 
+    if _wants_json():
+        return _sets_json_response(workout, workout_exercise, "Série adicionada com sucesso.")
     flash("Série adicionada com sucesso.", "success")
     return redirect(url_for("workouts.workout_detail", workout_id=workout_id))
 
@@ -272,17 +318,10 @@ def update_workout_set(workout_id, exercise_id, set_id):
         workout_set.repetitions = int(repetitions)
         workout_set.weight_kg = Decimal(weight_kg)
         db.session.commit()
-    except (InvalidOperation, ValueError):
+    except (InvalidOperation, ValueError, IntegrityError):
         db.session.rollback()
-        return _render_set_form_with_error(
-            workout,
-            workout_exercise,
-            workout_set,
-            repetitions,
-            weight_kg,
-        )
-    except IntegrityError:
-        db.session.rollback()
+        if _wants_json():
+            return _set_error_json(SET_VALIDATION_ERROR)
         return _render_set_form_with_error(
             workout,
             workout_exercise,
@@ -291,13 +330,15 @@ def update_workout_set(workout_id, exercise_id, set_id):
             weight_kg,
         )
 
+    if _wants_json():
+        return _sets_json_response(workout, workout_exercise, "Série atualizada com sucesso.")
     flash("Série atualizada com sucesso.", "success")
     return redirect(url_for("workouts.workout_detail", workout_id=workout_id))
 
 
 @bp.post("/<int:workout_id>/exercises/<int:exercise_id>/sets/<int:set_id>/delete")
 def delete_workout_set(workout_id, exercise_id, set_id):
-    _get_workout_or_404(workout_id)
+    workout = _get_workout_or_404(workout_id)
     workout_exercise = _get_workout_exercise_or_404(workout_id, exercise_id)
     workout_set = _get_workout_set_or_404(workout_exercise.id, set_id)
     removed_position = workout_set.position
@@ -317,6 +358,8 @@ def delete_workout_set(workout_id, exercise_id, set_id):
         db.session.flush()
 
     db.session.commit()
+    if _wants_json():
+        return _sets_json_response(workout, workout_exercise, "Série excluída com sucesso.")
     flash("Série excluída com sucesso.", "success")
     return redirect(url_for("workouts.workout_detail", workout_id=workout_id))
 
@@ -404,6 +447,51 @@ def _render_workout_detail(
     )
 
 
+def _wants_json():
+    # The set forms on the workout page are sent with fetch() asking for JSON,
+    # so the page can be updated without reloading. A regular form submission
+    # (no JavaScript) asks for HTML and keeps the redirect/re-render behaviour.
+    return (
+        request.accept_mimetypes.best_match(["text/html", "application/json"])
+        == "application/json"
+    )
+
+
+def _sets_json_response(workout, workout_exercise, message):
+    """Return the re-rendered sets area of one exercise after a set change.
+
+    The HTML comes from the same template used by the full page, so the sets
+    markup exists in a single place.
+    """
+    # Reload from the database so the fragment shows exactly what a page reload
+    # would: positions renumbered after a delete and weights normalized by the
+    # column (a set saved as "22.5" is stored and shown as 22.50).
+    db.session.expire_all()
+    total_sets = db.session.scalar(
+        select(func.count(WorkoutSet.id))
+        .join(WorkoutSet.workout_exercise)
+        .where(WorkoutExercise.workout_id == workout.id)
+    )
+    return jsonify(
+        {
+            "message": message,
+            "sets_html": render_template(
+                "partials/workout_exercise_sets.html",
+                workout=workout,
+                workout_exercise=workout_exercise,
+                set_error=None,
+                set_form_values={},
+                failed_workout_exercise_id=None,
+            ),
+            "total_sets": total_sets,
+        }
+    )
+
+
+def _set_error_json(message):
+    return jsonify({"error": message}), 400
+
+
 def _set_form_values():
     return request.form.get("repetitions", ""), request.form.get("weight_kg", "")
 
@@ -422,12 +510,30 @@ def _render_set_form_with_error(
         workout_set=workout_set,
         form_repetitions=repetitions,
         form_weight_kg=weight_kg,
-        error="Informe repetições positivas e um peso válido com até duas casas decimais.",
+        error=SET_VALIDATION_ERROR,
     ), 200
 
 
 def _form_values():
     return request.form.get("date", ""), request.form.get("name", "")
+
+
+def _parse_month(value):
+    """Parse ?month=YYYY-MM. Invalid values return None (the current month is shown)."""
+    if not value:
+        return None
+    try:
+        month = datetime.strptime(value, "%Y-%m").date()
+    except ValueError:
+        return None
+    # The calendar links to the previous and next months, which must be valid dates.
+    if not date.min.year < month.year < date.max.year:
+        return None
+    return month
+
+
+def _month_param(month):
+    return f"{month.year:04d}-{month.month:02d}"
 
 
 def _parse_date(value):

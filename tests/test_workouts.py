@@ -13,39 +13,6 @@ def create_workout(session, workout_date=date(2026, 10, 5), name="Treino A"):
     return workout
 
 
-def test_list_workouts_is_empty(client):
-    response = client.get("/workouts")
-
-    assert response.status_code == 200
-    assert b"Nenhum treino cadastrado." in response.data
-
-
-def test_list_workouts_shows_registered_workouts(client, session):
-    create_workout(session, name="Push")
-    create_workout(session, name="Pull")
-
-    response = client.get("/workouts")
-
-    assert response.status_code == 200
-    assert b"Push" in response.data
-    assert b"Pull" in response.data
-
-
-def test_list_workouts_orders_by_date_descending_then_id_descending(client, session):
-    oldest = create_workout(session, date(2026, 10, 3), "Mais antigo")
-    same_date_first = create_workout(session, date(2026, 10, 5), "Mesmo dia primeiro")
-    same_date_second = create_workout(session, date(2026, 10, 5), "Mesmo dia segundo")
-    newest = create_workout(session, date(2026, 10, 6), "Mais recente")
-
-    response = client.get("/workouts")
-    page = response.get_data(as_text=True)
-
-    assert response.status_code == 200
-    assert page.index(newest.name) < page.index(same_date_second.name)
-    assert page.index(same_date_second.name) < page.index(same_date_first.name)
-    assert page.index(same_date_first.name) < page.index(oldest.name)
-
-
 def test_new_workout_form_is_displayed(client):
     response = client.get("/workouts/new")
 
@@ -58,7 +25,7 @@ def test_creates_workout(client, session):
 
     workout = session.query(Workout).one()
     assert response.status_code == 302
-    assert response.headers["Location"].endswith("/workouts")
+    assert response.headers["Location"].endswith(f"/workouts/{workout.id}")
     assert workout.date == date(2026, 10, 5)
     assert workout.name == "Push"
 

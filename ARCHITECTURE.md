@@ -211,6 +211,10 @@ Multiple workouts may have the same date.
 
 Workout names are free text.
 
+Workouts are reached through a monthly calendar (`GET /workouts?month=YYYY-MM`, current month by default), rendered on the server from the workouts of that month. A day with one workout links to it; a day with several opens a dialog with their cards, ordered like workouts on the same date elsewhere (`created_at` desc, then `id` desc).
+
+On the workout page, exercises start collapsed. Sets are added, edited and deleted with `fetch()` (`static/js/workouts.js`) using the existing set routes: when the request asks for JSON they return the re-rendered sets area of that exercise (`templates/partials/workout_exercise_sets.html`, the same template used by the full page); regular form submissions keep the redirect behaviour.
+
 ---
 
 ### Exercise

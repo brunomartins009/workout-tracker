@@ -2,14 +2,21 @@
 
 {% block title %}{{ workout.name }} | Workout Tracker{% endblock %}
 
+{% from "partials/icons.html" import chevron_icon %}
+
 {% block content %}
-  <a class="back-link" href="{{ url_for('workouts.list_workouts') }}">← Histórico de treinos</a>
+  <a class="back-link" href="{{ url_for('workouts.list_workouts') }}">← Treinos</a>
   <header class="page-header">
     <div>
       <h1>{{ workout.name }}</h1>
       <p class="page-subtitle"><time datetime="{{ workout.date.isoformat() }}">{{ workout.date.strftime('%d/%m/%Y') }}</time></p>
     </div>
-    <a class="btn btn-secondary" href="{{ url_for('workouts.edit_workout', workout_id=workout.id) }}">Editar treino</a>
+    <div class="actions">
+      <a class="btn btn-secondary" href="{{ url_for('workouts.edit_workout', workout_id=workout.id) }}">Editar treino</a>
+      <form class="inline-form" action="{{ url_for('workouts.delete_workout', workout_id=workout.id) }}" method="post">
+        <button class="btn btn-danger" type="submit">Excluir treino</button>
+      </form>
+    </div>
   </header>
 
   <section aria-labelledby="summary-title">
@@ -37,30 +44,34 @@
     {% if workout_exercises %}
       <ol class="exercise-list">
         {% for workout_exercise in workout_exercises %}
-          {% set exercise_name = workout_exercise.exercise.name %}
-          {% set ordered_sets = workout_exercise.sets|sort(attribute='position') %}
-          {% set add_set_failed = set_error and failed_workout_exercise_id == workout_exercise.id %}
+          {% set exercise = workout_exercise.exercise %}
+          {% set exercise_name = exercise.name %}
           {#
-            The add-set form starts with the previous set's values because sets of
-            the same exercise usually repeat them; after a failed submission it shows
-            what the user typed instead.
+            Exercises start collapsed. The only exception is a failed add-set
+            submission without JavaScript, which must show the error.
           #}
-          {% if add_set_failed %}
-            {% set default_repetitions = set_form_values.get('repetitions', '') %}
-            {% set default_weight_kg = set_form_values.get('weight_kg', '') %}
-          {% elif ordered_sets %}
-            {% set default_repetitions = (ordered_sets|last).repetitions %}
-            {% set default_weight_kg = (ordered_sets|last).weight_kg %}
-          {% else %}
-            {% set default_repetitions = '' %}
-            {% set default_weight_kg = '' %}
-          {% endif %}
-
+          {% set expanded = set_error and failed_workout_exercise_id == workout_exercise.id %}
           <li class="panel exercise-card" id="exercise-{{ workout_exercise.id }}">
             <div class="exercise-card-header">
-              <h3>
-                <span class="position-badge" aria-hidden="true">{{ workout_exercise.position }}</span>
-                {{ exercise_name }}
+              {#
+                The toggle and the actions are siblings, so clicking Histórico,
+                ↑, ↓ or Remover never expands or collapses the exercise.
+              #}
+              <h3 class="exercise-card-title">
+                <button
+                  class="exercise-toggle"
+                  type="button"
+                  aria-expanded="{{ 'true' if expanded else 'false' }}"
+                  aria-controls="exercise-{{ workout_exercise.id }}-body"
+                  data-exercise-toggle
+                >
+                  <span class="position-badge" aria-hidden="true">{{ workout_exercise.position }}</span>
+                  <span class="exercise-toggle-text">
+                    <span class="exercise-toggle-name">{{ exercise_name }}</span>
+                    <span class="exercise-toggle-muscles">{{ exercise.muscle_group }} / {{ exercise.muscle_subgroup }}</span>
+                  </span>
+                  {{ chevron_icon() }}
+                </button>
               </h3>
               <div class="actions">
                 <button
@@ -86,56 +97,10 @@
               </div>
             </div>
 
-            {% if ordered_sets %}
-              <div class="table-wrapper">
-                <table class="data-table sets-table">
-                  <caption class="visually-hidden">Séries de {{ exercise_name }}</caption>
-                  <thead>
-                    <tr>
-                      <th scope="col">Série</th>
-                      <th scope="col" class="numeric">Repetições</th>
-                      <th scope="col" class="numeric">Peso</th>
-                      <th scope="col" class="row-actions"><span class="visually-hidden">Ações</span></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {% for workout_set in ordered_sets %}
-                      <tr id="set-{{ workout_set.id }}">
-                        <td class="set-position">{{ workout_set.position }}</td>
-                        <td class="set-repetitions numeric">{{ workout_set.repetitions }}</td>
-                        <td class="set-weight numeric">{{ workout_set.weight_kg }} kg</td>
-                        <td class="row-actions">
-                          <div class="actions">
-                            <a class="btn-text" href="{{ url_for('workouts.edit_workout_set', workout_id=workout.id, exercise_id=workout_exercise.exercise_id, set_id=workout_set.id) }}">Editar<span class="visually-hidden"> série {{ workout_set.position }}</span></a>
-                            <form class="inline-form" action="{{ url_for('workouts.delete_workout_set', workout_id=workout.id, exercise_id=workout_exercise.exercise_id, set_id=workout_set.id) }}" method="post">
-                              <button class="btn-text btn-text-danger" type="submit">Excluir<span class="visually-hidden"> série {{ workout_set.position }}</span></button>
-                            </form>
-                          </div>
-                        </td>
-                      </tr>
-                    {% endfor %}
-                  </tbody>
-                </table>
-              </div>
-            {% else %}
-              <p class="empty-sets muted">Nenhuma série registrada.</p>
-            {% endif %}
-
-            <div class="add-set">
-              {% if add_set_failed %}
-                <p class="alert alert-error" role="alert">{{ set_error }}</p>
-              {% endif %}
-              <form class="add-set-form" action="{{ url_for('workouts.add_workout_set', workout_id=workout.id, exercise_id=workout_exercise.exercise_id) }}" method="post">
-                <div class="form-field">
-                  <label for="repetitions-{{ workout_exercise.id }}">Repetições</label>
-                  <input id="repetitions-{{ workout_exercise.id }}" name="repetitions" type="number" min="1" inputmode="numeric" value="{{ default_repetitions }}" required>
-                </div>
-                <div class="form-field">
-                  <label for="weight-{{ workout_exercise.id }}">Peso (kg)</label>
-                  <input id="weight-{{ workout_exercise.id }}" name="weight_kg" type="number" min="0" step="0.01" inputmode="decimal" value="{{ default_weight_kg }}" required>
-                </div>
-                <button class="btn btn-primary" type="submit">Adicionar série</button>
-              </form>
+            <div class="exercise-card-body" id="exercise-{{ workout_exercise.id }}-body"{% if not expanded %} hidden{% endif %}>
+              {# Success/error messages of set changes made with fetch(). #}
+              <p class="set-feedback" data-set-feedback role="status" aria-live="polite"></p>
+              {% include "partials/workout_exercise_sets.html" %}
             </div>
           </li>
         {% endfor %}
@@ -182,4 +147,5 @@
 {% block scripts %}
   <script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
   <script src="{{ url_for('static', filename='js/exercise_history.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/workouts.js') }}"></script>
 {% endblock %}
