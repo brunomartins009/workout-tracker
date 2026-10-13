@@ -183,13 +183,15 @@ The local database already contains real workout data, so it must never be delet
 
 `app/schema.py` handles the additive changes made so far. On startup, right after `create_all()`, it adds model columns that are missing from an existing table using `ALTER TABLE ... ADD COLUMN` with a default value. This keeps every existing row, id and relationship, and does nothing when the column already exists.
 
+An upgrade may carry a one-time data backfill, executed in the same transaction and only when the column is created. `workouts.completed_at` uses it: sessions recorded before completion existed are marked completed (`completed_at = updated_at`), while sessions created afterwards start in progress and are never touched by later startups.
+
 Only additive changes belong there. If a destructive change becomes necessary (renaming or dropping columns, changing types), a real migration tool such as Alembic should be introduced instead of extending `app/schema.py`.
 
 ---
 
 ## 7. Data Model
 
-The application currently has four core models.
+The application currently has six core models.
 
 ### Workout
 
@@ -201,9 +203,12 @@ Main fields:
 id
 date
 name
+completed_at
 created_at
 updated_at
 ```
+
+`completed_at` is `NULL` while the session is in progress and is set once when the session is completed. A completed session is read-only.
 
 A workout may contain multiple exercises.
 
@@ -213,7 +218,11 @@ Workout names are free text.
 
 Workouts are reached through a monthly calendar (`GET /workouts?month=YYYY-MM`, current month by default), rendered on the server from the workouts of that month. A day with one workout links to it; a day with several opens a dialog with their cards, ordered like workouts on the same date elsewhere (`created_at` desc, then `id` desc).
 
+Sessions are never created empty. From the calendar, "Novo treino" opens the template builder (`GET /templates/new`) and "Iniciar treino" opens the template list (`GET /templates`), where `POST /templates/<id>/start` creates today's session from the chosen template. The old `GET /workouts/new` address redirects to the builder.
+
 On the workout page, exercises start collapsed. Sets are added, edited and deleted with `fetch()` (`static/js/workouts.js`) using the existing set routes: when the request asks for JSON they return the re-rendered sets area of that exercise (`templates/partials/workout_exercise_sets.html`, the same template used by the full page); regular form submissions keep the redirect behaviour.
+
+Exercises of a session in progress are added, removed and moved the same way: when asked for JSON, those routes return the re-rendered exercise list (`templates/partials/workout_exercise_list.html`), which replaces the whole list, since one change renumbers positions and changes which exercises show ↑ and ↓. The page keeps the scroll position and reopens the exercises that were open (cards keep their `exercise-<id>`). Click and submit listeners of the workout page and of the exercise modal are delegated to the document, so they keep working on the replaced HTML.
 
 ---
 
@@ -252,7 +261,7 @@ GET /exercises/<muscle_group>   exercises of one category, ordered by subgroup a
 exercise modal                  name, muscle group/subgroup, recent history table and history chart
 ```
 
-The exercise modal (`templates/partials/exercise_modal.html` + `static/js/exercise_history.js`) is shared by the category page and the workout detail page. Its data comes from a single endpoint, `GET /exercises/<id>/history`, which returns the exercise, the 5 most recent occurrences for the table and the complete history for the chart.
+The exercise modal (`templates/partials/exercise_modal.html` + `static/js/exercise_history.js`) is shared by the category page, the workout detail page and the template builder (`GET /templates/new`), where it also shows an "Adicionar" button handled by `static/js/template_builder.js`. Its data comes from a single endpoint, `GET /exercises/<id>/history`, which returns the exercise, the 5 most recent occurrences for the table and the complete history for the chart.
 
 Exercise names are normalized by trimming surrounding whitespace.
 
@@ -317,15 +326,59 @@ Set positions must be positive and unique within the exercise occurrence.
 
 Repetitions must be positive.
 
+Positions and repetitions are at most `2^63 - 1`, the largest SQLite INTEGER.
+
 Weight must be zero or greater.
 
 Weight uses decimal precision with a maximum of two decimal places.
+
+Weight must be a finite number of at most `999999.99` kg, the largest value of the `Numeric(8, 2)` column. SQLite does not enforce the declared precision, so larger values (or infinity) would otherwise be stored inexactly instead of being rejected.
 
 Bodyweight/no external load is represented as:
 
 ```text
 0 kg
 ```
+
+---
+
+### WorkoutTemplate
+
+Represents a reusable list of exercises (for example "Push") from which sessions are started.
+
+Main fields:
+
+```text
+id
+name
+created_at
+updated_at
+```
+
+Template names follow the exercise-name rules: trimmed, required and unique case-insensitively.
+
+A template has no date and no sets.
+
+---
+
+### WorkoutTemplateExercise
+
+Represents an exercise of a template, at a given position.
+
+Main fields:
+
+```text
+id
+template_id
+exercise_id
+position
+created_at
+updated_at
+```
+
+The same exercise cannot appear twice in a template, and positions are positive and unique within a template.
+
+Starting a session copies the template's name and exercises (in order, without sets) into a new `Workout` and its `WorkoutExercise` rows. The session keeps no reference to the template, so changing or deleting a template never affects existing sessions.
 
 ---
 
@@ -362,6 +415,16 @@ Workout
 
 `WorkoutExercise` is the association between a workout and an exercise.
 
+Templates have their own association with the exercise library:
+
+```text
+WorkoutTemplate
+  └── WorkoutTemplateExercise
+          └── Exercise
+```
+
+There is intentionally no relationship between `Workout` and `WorkoutTemplate`.
+
 ---
 
 ## 9. Deletion Rules
@@ -384,6 +447,8 @@ This protects historical workout data.
 
 The reusable `Exercise` record is therefore treated as catalog data, while `WorkoutExercise` and `WorkoutSet` represent historical occurrences.
 
+Deleting a template cascades only to its `WorkoutTemplateExercise` rows. It never deletes sessions or library exercises, and deleting a session never deletes templates. A library exercise used by a template cannot be deleted either.
+
 ---
 
 ## 10. Validation
@@ -396,8 +461,8 @@ Python-side validation handles rules such as:
 
 * required names;
 * trimming whitespace;
-* positive integer values;
-* valid weight values;
+* positive integer values, up to `2^63 - 1`;
+* valid weight values (finite, from `0` to `999999.99`);
 * maximum decimal precision.
 
 ### Database constraints
@@ -494,11 +559,16 @@ Current decisions:
 * no failure-set model;
 * no drop-set model;
 * no special unilateral-set model;
-* incomplete workouts may exist while being edited;
-* a completed workout must contain at least one exercise;
-* each exercise in a completed workout must contain at least one set.
+* sessions are started from templates and stay in progress while being recorded;
+* a session can be completed when it has at least one exercise with at least one set (other exercises may have no sets);
+* completion is permanent and makes the session read-only;
+* sessions recorded before completion existed were migrated as completed, without this validation.
 
-There is currently no separate draft/completed status field.
+`Workout.completed_at` is the completion status.
+
+Completing a session is a single conditional `UPDATE` (still in progress and with at least one set). Every route that changes a session starts its transaction with another conditional `UPDATE` (still in progress, which also records `updated_at`). SQLite allows one writer at a time, so a completion and a change of the same session are serialized: a change never lands on a session completed in the meantime, and a completion always sees the changes saved before it.
+
+Ids in URLs and forms are limited to the SQLite INTEGER range (`2^63 - 1`): the `<int:...>` URL converter does not match larger ids, so they get HTTP 404 like any unknown id; an exercise id beyond it gets 404 when adding an exercise to a session and the invalid exercise list message when creating a template. Positions and repetitions share that limit, and weights are limited to `999999.99` (the `Numeric(8, 2)` column), since SQLite does not enforce declared precision. Excessive repetitions or weights get the usual set validation error (HTTP 400 for fetch requests). In every case nothing is written.
 
 ---
 

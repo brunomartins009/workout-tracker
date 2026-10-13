@@ -12,7 +12,7 @@
       <a class="brand" href="{{ url_for('workouts.list_workouts') }}">Workout Tracker</a>
       <nav class="site-nav" aria-label="Navegação principal">
         {# request.blueprint identifies the current area, so the nav can highlight it. #}
-        <a href="{{ url_for('workouts.list_workouts') }}" {% if request.blueprint == 'workouts' %}aria-current="page"{% endif %}>Treinos</a>
+        <a href="{{ url_for('workouts.list_workouts') }}" {% if request.blueprint in ('workouts', 'workout_templates') %}aria-current="page"{% endif %}>Treinos</a>
         <a href="{{ url_for('exercises.list_exercises') }}" {% if request.blueprint == 'exercises' %}aria-current="page"{% endif %}>Exercícios</a>
       </nav>
     </div>

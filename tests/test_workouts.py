@@ -13,59 +13,24 @@ def create_workout(session, workout_date=date(2026, 10, 5), name="Treino A"):
     return workout
 
 
-def test_new_workout_form_is_displayed(client):
+# Sessions are created only from templates (see test_workout_templates.py):
+# the old empty-session form now leads to the template builder and the old
+# create route no longer exists.
+
+
+def test_old_new_workout_address_redirects_to_template_builder(client, session):
     response = client.get("/workouts/new")
 
-    assert response.status_code == 200
-    assert 'type="date"' in response.get_data(as_text=True)
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/templates/new")
+    assert session.query(Workout).count() == 0
 
 
-def test_creates_workout(client, session):
+def test_empty_session_can_no_longer_be_created(client, session):
     response = client.post("/workouts", data={"date": "2026-10-05", "name": "Push"})
 
-    workout = session.query(Workout).one()
-    assert response.status_code == 302
-    assert response.headers["Location"].endswith(f"/workouts/{workout.id}")
-    assert workout.date == date(2026, 10, 5)
-    assert workout.name == "Push"
-
-
-def test_creation_removes_surrounding_whitespace_from_name(client, session):
-    response = client.post(
-        "/workouts", data={"date": "2026-10-05", "name": "  Push  "}
-    )
-
-    assert response.status_code == 302
-    assert session.query(Workout).one().name == "Push"
-
-
-@pytest.mark.parametrize("name", ["", "   "])
-def test_creation_rejects_empty_name_and_preserves_form_values(client, session, name):
-    response = client.post("/workouts", data={"date": "2026-10-05", "name": name})
-    page = response.get_data(as_text=True)
-
-    assert response.status_code == 200
-    assert "Informe uma data válida e um nome para o treino." in page
-    assert 'value="2026-10-05"' in page
+    assert response.status_code == 405
     assert session.query(Workout).count() == 0
-
-
-@pytest.mark.parametrize("workout_date", ["", "not-a-date"])
-def test_creation_rejects_invalid_date(client, session, workout_date):
-    response = client.post("/workouts", data={"date": workout_date, "name": "Push"})
-
-    assert response.status_code == 200
-    assert b"Informe uma data v\xc3\xa1lida e um nome para o treino." in response.data
-    assert session.query(Workout).count() == 0
-
-
-def test_allows_multiple_workouts_with_same_date_and_name(client, session):
-    first_response = client.post("/workouts", data={"date": "2026-10-05", "name": "Push"})
-    second_response = client.post("/workouts", data={"date": "2026-10-05", "name": "Push"})
-
-    assert first_response.status_code == 302
-    assert second_response.status_code == 302
-    assert session.query(Workout).count() == 2
 
 
 def test_edits_workout(client, session):
@@ -94,18 +59,37 @@ def test_edit_normalizes_name(client, session):
     assert session.get(Workout, workout.id).name == "Push"
 
 
-def test_edit_rejects_empty_name_and_preserves_form_values(client, session):
+@pytest.mark.parametrize("name", ["", "   "])
+def test_edit_rejects_empty_name_and_preserves_form_values(client, session, name):
     workout = create_workout(session)
 
     response = client.post(
         f"/workouts/{workout.id}/edit",
-        data={"date": "2026-10-06", "name": "   "},
+        data={"date": "2026-10-06", "name": name},
     )
     page = response.get_data(as_text=True)
 
     assert response.status_code == 200
+    assert "Informe uma data válida e um nome para o treino." in page
     assert 'value="2026-10-06"' in page
-    assert session.get(Workout, workout.id).name == "Treino A"
+    session.expire_all()
+    stored = session.get(Workout, workout.id)
+    assert (stored.name, stored.date) == ("Treino A", date(2026, 10, 5))
+
+
+@pytest.mark.parametrize("workout_date", ["", "not-a-date"])
+def test_edit_rejects_invalid_date(client, session, workout_date):
+    workout = create_workout(session)
+
+    response = client.post(
+        f"/workouts/{workout.id}/edit",
+        data={"date": workout_date, "name": "Push"},
+    )
+
+    assert response.status_code == 200
+    assert "Informe uma data válida e um nome para o treino." in response.get_data(as_text=True)
+    session.expire_all()
+    assert session.get(Workout, workout.id).date == date(2026, 10, 5)
 
 
 def test_editing_nonexistent_workout_returns_404(client):

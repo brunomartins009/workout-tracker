@@ -13,6 +13,15 @@ from app.database import Base
 # It is stored as a real value (not NULL) so it stays visible in the library.
 UNCLASSIFIED = "XXXXX"
 
+# Largest value of an SQLite INTEGER. Ids and positive integers above it cannot
+# be stored or exist, and the driver raises OverflowError when given one.
+SQLITE_MAX_INTEGER = 2**63 - 1
+
+# Largest weight that fits the Numeric(8, 2) column. SQLite does not enforce
+# the declared precision, so larger values would be stored inexactly (or as
+# infinity) instead of being rejected.
+MAX_WEIGHT_KG = Decimal("999999.99")
+
 
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
@@ -29,12 +38,72 @@ class Workout(TimestampMixin, Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     date: Mapped[date] = mapped_column(Date, nullable=False)
     name: Mapped[str] = mapped_column(String(150), nullable=False)
+    # NULL while the session is in progress; set once when it is completed.
+    # A completed session is read-only.
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     workout_exercises: Mapped[list[WorkoutExercise]] = relationship(back_populates="workout", cascade="all, delete-orphan", passive_deletes=True)
+
+    @property
+    def is_completed(self) -> bool:
+        return self.completed_at is not None
 
     @validates("name")
     def validate_name(self, _key: str, value: str) -> str:
         return _validate_required_name(value)
+
+
+class WorkoutTemplate(TimestampMixin, Base):
+    """A reusable list of exercises from which workout sessions are started.
+
+    Sessions copy the template's name and exercises when they start and keep no
+    link to it, so changing or deleting a template never affects a session.
+    """
+
+    __tablename__ = "workout_templates"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(150), nullable=False)
+
+    # Same uniqueness rule as exercise names: trimmed and case-insensitive.
+    __table_args__ = (
+        Index("uq_workout_templates_normalized_name", func.lower(func.trim(name)), unique=True),
+    )
+
+    template_exercises: Mapped[list[WorkoutTemplateExercise]] = relationship(
+        back_populates="template",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="WorkoutTemplateExercise.position",
+    )
+
+    @validates("name")
+    def validate_name(self, _key: str, value: str) -> str:
+        return _validate_required_name(value)
+
+
+class WorkoutTemplateExercise(TimestampMixin, Base):
+    """An exercise of a template, at a given position."""
+
+    __tablename__ = "workout_template_exercises"
+    __table_args__ = (
+        UniqueConstraint("template_id", "exercise_id", name="uq_workout_template_exercise"),
+        UniqueConstraint("template_id", "position", name="uq_workout_template_exercise_position"),
+        CheckConstraint("position > 0", name="ck_workout_template_exercise_position_positive"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    template_id: Mapped[int] = mapped_column(ForeignKey("workout_templates.id", ondelete="CASCADE"), nullable=False, index=True)
+    # Library exercises used by a template cannot be deleted, like those used by sessions.
+    exercise_id: Mapped[int] = mapped_column(ForeignKey("exercises.id", ondelete="RESTRICT"), nullable=False, index=True)
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    template: Mapped[WorkoutTemplate] = relationship(back_populates="template_exercises")
+    exercise: Mapped[Exercise] = relationship()
+
+    @validates("position")
+    def validate_position(self, _key: str, value: int) -> int:
+        return _validate_positive_integer(value, "position")
 
 
 class Exercise(TimestampMixin, Base):
@@ -110,6 +179,8 @@ class WorkoutSet(TimestampMixin, Base):
 
         if not weight.is_finite() or weight < 0:
             raise ValueError("weight_kg must be greater than or equal to zero")
+        if weight > MAX_WEIGHT_KG:
+            raise ValueError(f"weight_kg must be at most {MAX_WEIGHT_KG}")
         if -weight.as_tuple().exponent > 2:
             raise ValueError("weight_kg must have at most two decimal places")
         return weight
@@ -127,4 +198,6 @@ def _validate_required_name(value: str, field_name: str = "name") -> str:
 def _validate_positive_integer(value: int, field_name: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
         raise ValueError(f"{field_name} must be a positive integer")
+    if value > SQLITE_MAX_INTEGER:
+        raise ValueError(f"{field_name} is too large")
     return value

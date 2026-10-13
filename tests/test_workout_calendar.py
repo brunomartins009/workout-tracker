@@ -39,12 +39,13 @@ def highlighted_dates(page):
 # Page structure
 
 
-def test_workouts_page_shows_calendar_and_new_workout_action(client):
+def test_workouts_page_shows_calendar_and_template_actions(client):
     page = get_calendar(client, "2026-10")
 
     assert "<h1>Treinos</h1>" in page
-    assert 'href="/workouts/new"' in page
-    assert "+ Novo treino" in page
+    assert 'href="/templates/new">Novo treino</a>' in page
+    assert 'href="/templates">Iniciar treino</a>' in page
+    assert 'href="/workouts/new"' not in page
     assert re.findall(r"<th scope=\"col\">([^<]+)</th>", page) == ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]
     assert '<h2 id="calendar-title">Outubro 2026</h2>' in page
 

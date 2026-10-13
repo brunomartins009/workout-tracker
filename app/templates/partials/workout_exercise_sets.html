@@ -1,6 +1,6 @@
 {#
   Sets area of one exercise on the workout page: sets table, inline edit rows
-  and the add-set form.
+  and the add-set form. A completed workout shows only the sets table.
 
   Rendered inside the workout page and, after a set is added, edited or
   deleted with fetch(), returned by the set routes so workouts.js can replace
@@ -36,7 +36,9 @@
             <th scope="col">Série</th>
             <th scope="col" class="numeric">Repetições</th>
             <th scope="col" class="numeric">Peso</th>
-            <th scope="col" class="row-actions"><span class="visually-hidden">Ações</span></th>
+            {% if not workout.is_completed %}
+              <th scope="col" class="row-actions"><span class="visually-hidden">Ações</span></th>
+            {% endif %}
           </tr>
         </thead>
         <tbody>
@@ -45,6 +47,7 @@
               <td class="set-position">{{ workout_set.position }}</td>
               <td class="set-repetitions numeric">{{ workout_set.repetitions }}</td>
               <td class="set-weight numeric">{{ workout_set.weight_kg }} kg</td>
+              {% if not workout.is_completed %}
               <td class="row-actions">
                 <div class="actions">
                   {# Without JavaScript the link opens the edit page; workouts.js shows the inline row instead. #}
@@ -65,7 +68,9 @@
                   </form>
                 </div>
               </td>
+              {% endif %}
             </tr>
+            {% if not workout.is_completed %}
             <tr class="set-edit-row" id="set-{{ workout_set.id }}-edit" hidden>
               <td colspan="4">
                 <form class="set-edit-form" action="{{ url_for('workouts.update_workout_set', workout_id=workout.id, exercise_id=workout_exercise.exercise_id, set_id=workout_set.id) }}" method="post" data-set-form>
@@ -83,6 +88,7 @@
                 </form>
               </td>
             </tr>
+            {% endif %}
           {% endfor %}
         </tbody>
       </table>
@@ -91,6 +97,7 @@
     <p class="empty-sets muted">Nenhuma série registrada.</p>
   {% endif %}
 
+  {% if not workout.is_completed %}
   <div class="add-set">
     {% if add_set_failed %}
       <p class="alert alert-error" role="alert">{{ set_error }}</p>
@@ -107,4 +114,5 @@
       <button class="btn btn-primary" type="submit">Adicionar série</button>
     </form>
   </div>
+  {% endif %}
 </div>

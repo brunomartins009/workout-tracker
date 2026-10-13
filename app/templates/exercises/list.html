@@ -2,6 +2,8 @@
 
 {% block title %}Exercícios | Workout Tracker{% endblock %}
 
+{% from "partials/library_cards.html" import muscle_group_card_content %}
+
 {% block content %}
   <header class="page-header">
     <div>
@@ -15,8 +17,7 @@
       {% for muscle_group, count in categories %}
         <li>
           <a class="library-card" href="{{ url_for('exercises.exercise_category', muscle_group=muscle_group) }}">
-            <span class="library-card-title{% if muscle_group == 'XXXXX' %} unclassified{% endif %}">{{ muscle_group }}</span>
-            <span class="library-card-detail category-count">{{ count }} {{ 'exercício' if count == 1 else 'exercícios' }}</span>
+            {{ muscle_group_card_content(muscle_group, count) }}
           </a>
         </li>
       {% endfor %}

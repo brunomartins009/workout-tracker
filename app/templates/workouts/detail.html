@@ -2,22 +2,39 @@
 
 {% block title %}{{ workout.name }} | Workout Tracker{% endblock %}
 
-{% from "partials/icons.html" import chevron_icon %}
-
 {% block content %}
+  {# A completed session is read-only: only the history and deletion remain. #}
+  {% set editable = not workout.is_completed %}
   <a class="back-link" href="{{ url_for('workouts.list_workouts') }}">← Treinos</a>
   <header class="page-header">
     <div>
       <h1>{{ workout.name }}</h1>
-      <p class="page-subtitle"><time datetime="{{ workout.date.isoformat() }}">{{ workout.date.strftime('%d/%m/%Y') }}</time></p>
+      <p class="page-subtitle">
+        <time datetime="{{ workout.date.isoformat() }}">{{ workout.date.strftime('%d/%m/%Y') }}</time>
+        {% if editable %}
+          <span class="status-badge status-badge-in-progress">Em andamento</span>
+        {% else %}
+          <span class="status-badge status-badge-completed">Concluído</span>
+        {% endif %}
+      </p>
     </div>
     <div class="actions">
-      <a class="btn btn-secondary" href="{{ url_for('workouts.edit_workout', workout_id=workout.id) }}">Editar treino</a>
-      <form class="inline-form" action="{{ url_for('workouts.delete_workout', workout_id=workout.id) }}" method="post">
+      {% if editable %}
+        {# Without JavaScript these forms submit directly; workouts.js asks for confirmation first. #}
+        <form class="inline-form" action="{{ url_for('workouts.complete_workout', workout_id=workout.id) }}" method="post" data-confirm-dialog="complete-workout-dialog">
+          <button class="btn btn-primary" type="submit">Concluir treino</button>
+        </form>
+        <a class="btn btn-secondary" href="{{ url_for('workouts.edit_workout', workout_id=workout.id) }}">Editar treino</a>
+      {% endif %}
+      <form class="inline-form" action="{{ url_for('workouts.delete_workout', workout_id=workout.id) }}" method="post" data-confirm-dialog="delete-workout-dialog">
         <button class="btn btn-danger" type="submit">Excluir treino</button>
       </form>
     </div>
   </header>
+
+  {% if not editable %}
+    <p class="alert alert-info completed-notice" role="status">Treino concluído. Ele não pode mais ser alterado, mas o histórico dos exercícios continua disponível.</p>
+  {% endif %}
 
   <section aria-labelledby="summary-title">
     <h2 id="summary-title" class="visually-hidden">Resumo</h2>
@@ -36,88 +53,21 @@
   <section class="section" aria-labelledby="exercises-title">
     <div class="section-header">
       <h2 id="exercises-title">Exercícios</h2>
-      {% if workout_exercises %}
+      {% if editable %}
         <a href="#add-exercise">+ Adicionar exercício</a>
       {% endif %}
     </div>
 
-    {% if workout_exercises %}
-      <ol class="exercise-list">
-        {% for workout_exercise in workout_exercises %}
-          {% set exercise = workout_exercise.exercise %}
-          {% set exercise_name = exercise.name %}
-          {#
-            Exercises start collapsed. The only exception is a failed add-set
-            submission without JavaScript, which must show the error.
-          #}
-          {% set expanded = set_error and failed_workout_exercise_id == workout_exercise.id %}
-          <li class="panel exercise-card" id="exercise-{{ workout_exercise.id }}">
-            <div class="exercise-card-header">
-              {#
-                The toggle and the actions are siblings, so clicking Histórico,
-                ↑, ↓ or Remover never expands or collapses the exercise.
-              #}
-              <h3 class="exercise-card-title">
-                <button
-                  class="exercise-toggle"
-                  type="button"
-                  aria-expanded="{{ 'true' if expanded else 'false' }}"
-                  aria-controls="exercise-{{ workout_exercise.id }}-body"
-                  data-exercise-toggle
-                >
-                  <span class="position-badge" aria-hidden="true">{{ workout_exercise.position }}</span>
-                  <span class="exercise-toggle-text">
-                    <span class="exercise-toggle-name">{{ exercise_name }}</span>
-                    <span class="exercise-toggle-muscles">{{ exercise.muscle_group }} / {{ exercise.muscle_subgroup }}</span>
-                  </span>
-                  {{ chevron_icon() }}
-                </button>
-              </h3>
-              <div class="actions">
-                <button
-                  class="btn btn-secondary btn-small"
-                  type="button"
-                  aria-haspopup="dialog"
-                  data-history-url="{{ url_for('exercises.exercise_history', exercise_id=workout_exercise.exercise_id) }}"
-                  data-exercise-name="{{ exercise_name }}"
-                >Histórico<span class="visually-hidden"> de {{ exercise_name }}</span></button>
-                {% if not loop.first %}
-                  <form class="inline-form" action="{{ url_for('workouts.move_workout_exercise_up', workout_id=workout.id, exercise_id=workout_exercise.exercise_id) }}" method="post">
-                    <button class="btn btn-secondary btn-small btn-icon" type="submit" aria-label="Mover {{ exercise_name }} para cima" title="Mover para cima">↑</button>
-                  </form>
-                {% endif %}
-                {% if not loop.last %}
-                  <form class="inline-form" action="{{ url_for('workouts.move_workout_exercise_down', workout_id=workout.id, exercise_id=workout_exercise.exercise_id) }}" method="post">
-                    <button class="btn btn-secondary btn-small btn-icon" type="submit" aria-label="Mover {{ exercise_name }} para baixo" title="Mover para baixo">↓</button>
-                  </form>
-                {% endif %}
-                <form class="inline-form" action="{{ url_for('workouts.delete_workout_exercise', workout_id=workout.id, exercise_id=workout_exercise.exercise_id) }}" method="post">
-                  <button class="btn btn-danger btn-small" type="submit">Remover<span class="visually-hidden"> {{ exercise_name }}</span></button>
-                </form>
-              </div>
-            </div>
-
-            <div class="exercise-card-body" id="exercise-{{ workout_exercise.id }}-body"{% if not expanded %} hidden{% endif %}>
-              {# Success/error messages of set changes made with fetch(). #}
-              <p class="set-feedback" data-set-feedback role="status" aria-live="polite"></p>
-              {% include "partials/workout_exercise_sets.html" %}
-            </div>
-          </li>
-        {% endfor %}
-      </ol>
-      <p class="form-hint">Use 0 kg para exercícios com peso corporal.</p>
-    {% else %}
-      <div class="panel empty-state">
-        <p>Nenhum exercício adicionado a este treino.</p>
-        <p class="muted">Escolha um exercício abaixo para começar a registrar as séries.</p>
-      </div>
-    {% endif %}
+    {# Success/error messages of exercise changes made with fetch(). #}
+    <p class="set-feedback list-feedback" data-exercise-feedback role="status" aria-live="polite"></p>
+    {% include "partials/workout_exercise_list.html" %}
   </section>
 
+  {% if editable %}
   <section class="section panel panel-body" id="add-exercise">
     <h2>Adicionar exercício</h2>
     {% if exercise_groups %}
-      <form class="add-exercise-form" action="{{ url_for('workouts.add_workout_exercise', workout_id=workout.id) }}" method="post">
+      <form class="add-exercise-form" action="{{ url_for('workouts.add_workout_exercise', workout_id=workout.id) }}" method="post" data-exercise-form="add">
         <div class="form-field">
           <label for="exercise_id">Exercício</label>
           <select id="exercise_id" name="exercise_id" required>
@@ -134,12 +84,64 @@
         </div>
         <button class="btn btn-primary" type="submit">Adicionar</button>
       </form>
+      <p class="set-feedback add-exercise-feedback" data-add-exercise-feedback role="status" aria-live="polite"></p>
       <p class="form-hint">Os exercícios estão agrupados por grupo muscular. <a href="{{ url_for('exercises.list_exercises') }}">Ver biblioteca</a>.</p>
     {% else %}
       <p class="muted">A biblioteca de exercícios está vazia.</p>
       <p class="form-actions"><a class="btn btn-secondary" href="{{ url_for('exercises.list_exercises') }}">Ver biblioteca</a></p>
     {% endif %}
   </section>
+
+  {# One dialog for every exercise; workouts.js fills in the exercise name. #}
+  <dialog class="modal modal-small" id="remove-exercise-dialog" aria-labelledby="remove-exercise-title">
+    <div class="modal-content">
+      <header class="modal-header">
+        <h2 id="remove-exercise-title">Remover exercício?</h2>
+        <button class="modal-close" type="button" data-confirm-close aria-label="Fechar">×</button>
+      </header>
+      <div class="modal-body">
+        <p>O exercício “<span data-confirm-name></span>” será removido deste treino. As séries registradas para ele nesta sessão também serão excluídas.</p>
+        <p class="muted">O exercício continua disponível na biblioteca e no histórico de outros treinos.</p>
+        <div class="form-actions">
+          <button class="btn btn-danger" type="button" data-confirm-accept>Remover exercício</button>
+          <button class="btn btn-secondary" type="button" data-confirm-close>Cancelar</button>
+        </div>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog class="modal modal-small" id="complete-workout-dialog" aria-labelledby="complete-workout-title">
+    <div class="modal-content">
+      <header class="modal-header">
+        <h2 id="complete-workout-title">Concluir treino?</h2>
+        <button class="modal-close" type="button" data-confirm-close aria-label="Fechar">×</button>
+      </header>
+      <div class="modal-body">
+        <p>Depois de concluído, o treino não poderá mais ser alterado: nome, data, exercícios e séries ficam bloqueados.</p>
+        <div class="form-actions">
+          <button class="btn btn-primary" type="button" data-confirm-accept>Concluir treino</button>
+          <button class="btn btn-secondary" type="button" data-confirm-close>Cancelar</button>
+        </div>
+      </div>
+    </div>
+  </dialog>
+  {% endif %}
+
+  <dialog class="modal modal-small" id="delete-workout-dialog" aria-labelledby="delete-workout-title">
+    <div class="modal-content">
+      <header class="modal-header">
+        <h2 id="delete-workout-title">Excluir treino?</h2>
+        <button class="modal-close" type="button" data-confirm-close aria-label="Fechar">×</button>
+      </header>
+      <div class="modal-body">
+        <p>O treino “{{ workout.name }}” e todas as suas séries serão excluídos. Os exercícios da biblioteca não são afetados.</p>
+        <div class="form-actions">
+          <button class="btn btn-danger" type="button" data-confirm-accept>Excluir treino</button>
+          <button class="btn btn-secondary" type="button" data-confirm-close>Cancelar</button>
+        </div>
+      </div>
+    </div>
+  </dialog>
 
   {% include "partials/exercise_modal.html" %}
 {% endblock %}

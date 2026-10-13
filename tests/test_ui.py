@@ -25,7 +25,8 @@ def add_exercise(session, workout, name, position):
     ("url", "current_link"),
     [
         ("/workouts", 'href="/workouts" aria-current="page">Treinos</a>'),
-        ("/workouts/new", 'href="/workouts" aria-current="page">Treinos</a>'),
+        ("/templates", 'href="/workouts" aria-current="page">Treinos</a>'),
+        ("/templates/new", 'href="/workouts" aria-current="page">Treinos</a>'),
         ("/exercises", 'href="/exercises" aria-current="page">Exercícios</a>'),
     ],
 )
@@ -39,19 +40,20 @@ def test_navigation_links_to_both_areas_and_marks_current_area(client, url, curr
     assert page.count('aria-current="page"') == 1
 
 
-def test_workout_list_shows_primary_action(client):
+def test_workout_list_shows_new_and_start_actions(client):
     workouts_page = client.get("/workouts").get_data(as_text=True)
 
-    assert "+ Novo treino" in workouts_page
+    assert '<a class="btn btn-secondary" href="/templates/new">Novo treino</a>' in workouts_page
+    assert '<a class="btn btn-primary" href="/templates">Iniciar treino</a>' in workouts_page
 
 
-def test_success_flash_is_rendered_as_status_message(client):
-    response = client.post(
-        "/workouts", data={"date": "2026-10-06", "name": "Push"}, follow_redirects=True
-    )
+def test_success_flash_is_rendered_as_status_message(client, session):
+    workout = create_workout(session)
+
+    response = client.post(f"/workouts/{workout.id}/delete", follow_redirects=True)
 
     assert (
-        '<li class="alert alert-success" role="status">Treino criado com sucesso.</li>'
+        '<li class="alert alert-success" role="status">Treino excluído com sucesso.</li>'
         in response.get_data(as_text=True)
     )
 
@@ -130,8 +132,6 @@ def test_detail_shows_sets_table_headers_and_add_set_labels(client, session):
 def test_forms_offer_cancel_action(client, session):
     workout = create_workout(session)
 
-    new_workout_page = client.get("/workouts/new").get_data(as_text=True)
     edit_workout_page = client.get(f"/workouts/{workout.id}/edit").get_data(as_text=True)
 
-    assert 'href="/workouts">Cancelar</a>' in new_workout_page
     assert f'href="/workouts/{workout.id}">Cancelar</a>' in edit_workout_page

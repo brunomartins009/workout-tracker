@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block title %}Modelos de treino | Workout Tracker{% endblock %}
+
+{% block content %}
+  <a class="back-link" href="{{ url_for('workouts.list_workouts') }}">← Treinos</a>
+  <header class="page-header">
+    <div>
+      <h1>Modelos de treino</h1>
+      <p class="page-subtitle">Escolha um modelo para iniciar o treino de hoje.</p>
+    </div>
+    <div class="actions">
+      <a class="btn btn-primary" href="{{ url_for('workout_templates.new_template') }}">Novo modelo</a>
+    </div>
+  </header>
+
+  {% if templates %}
+    <ul class="card-grid template-grid" aria-label="Modelos de treino">
+      {% for template in templates %}
+        {% set exercise_count = template.template_exercises|length %}
+        <li class="panel template-card" id="template-{{ template.id }}">
+          <h2 class="template-card-title">{{ template.name }}</h2>
+          <p class="library-card-detail">{{ exercise_count }} {{ 'exercício' if exercise_count == 1 else 'exercícios' }}</p>
+          <ol class="template-exercises">
+            {% for template_exercise in template.template_exercises %}
+              <li>{{ template_exercise.exercise.name }}</li>
+            {% endfor %}
+          </ol>
+          <div class="actions template-card-actions">
+            <form class="inline-form" action="{{ url_for('workout_templates.start_workout', template_id=template.id) }}" method="post" data-submit-once>
+              <button class="btn btn-primary btn-small" type="submit">Iniciar<span class="visually-hidden"> {{ template.name }}</span></button>
+            </form>
+            {# Without JavaScript the form submits directly; workouts.js asks for confirmation first. #}
+            <form
+              class="inline-form"
+              action="{{ url_for('workout_templates.delete_template', template_id=template.id) }}"
+              method="post"
+              data-confirm-dialog="delete-template-dialog"
+              data-confirm-name="{{ template.name }}"
+            >
+              <button class="btn btn-danger btn-small" type="submit">Excluir<span class="visually-hidden"> {{ template.name }}</span></button>
+            </form>
+          </div>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <div class="panel empty-state">
+      <p>Nenhum modelo de treino criado.</p>
+      <p class="muted">Crie um modelo com os exercícios de um treino para iniciá-lo sempre que quiser.</p>
+      <p><a class="btn btn-primary" href="{{ url_for('workout_templates.new_template') }}">Criar modelo</a></p>
+    </div>
+  {% endif %}
+
+  {# One dialog for every template; workouts.js fills in the template name. #}
+  <dialog class="modal modal-small" id="delete-template-dialog" aria-labelledby="delete-template-title">
+    <div class="modal-content">
+      <header class="modal-header">
+        <h2 id="delete-template-title">Excluir modelo?</h2>
+        <button class="modal-close" type="button" data-confirm-close aria-label="Fechar">×</button>
+      </header>
+      <div class="modal-body">
+        <p>O modelo “<span data-confirm-name></span>” será excluído. Os treinos já iniciados a partir dele não são afetados.</p>
+        <div class="form-actions">
+          <button class="btn btn-danger" type="button" data-confirm-accept>Excluir modelo</button>
+          <button class="btn btn-secondary" type="button" data-confirm-close>Cancelar</button>
+        </div>
+      </div>
+    </div>
+  </dialog>
+{% endblock %}
+
+{% block scripts %}
+  <script src="{{ url_for('static', filename='js/workouts.js') }}"></script>
+{% endblock %}

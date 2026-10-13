@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block title %}Novo modelo | Workout Tracker{% endblock %}
+
+{% from "partials/library_cards.html" import muscle_group_card_content, exercise_card %}
+
+{% block content %}
+  <a class="back-link" href="{{ url_for('workout_templates.list_templates') }}">← Modelos de treino</a>
+  <header class="page-header">
+    <div>
+      <h1>Novo modelo de treino</h1>
+      <p class="page-subtitle">Dê um nome ao modelo e escolha os exercícios na ordem em que serão feitos.</p>
+    </div>
+  </header>
+
+  <noscript>
+    <p class="alert alert-error">Ative o JavaScript para montar um modelo de treino.</p>
+  </noscript>
+
+  {#
+    Nothing is saved until "Criar modelo": template_builder.js keeps the
+    selection in memory and sends the name with the exercise ids, in order,
+    to POST /templates.
+  #}
+  <form id="template-builder-form" action="{{ url_for('workout_templates.create_template') }}" method="post" data-template-builder>
+    <section class="panel panel-body" aria-labelledby="template-name-label">
+      <div class="form-field">
+        <label id="template-name-label" for="template-name">Nome do modelo</label>
+        <input id="template-name" name="name" type="text" autocomplete="off" required>
+      </div>
+    </section>
+
+    <section class="section" id="exercise-picker" aria-labelledby="exercise-picker-title">
+      <div class="section-header">
+        <h2 id="exercise-picker-title" tabindex="-1">Escolha os exercícios</h2>
+      </div>
+      <p class="builder-feedback" data-builder-feedback role="status" aria-live="polite"></p>
+
+      {% if muscle_groups %}
+        {# Muscle groups; each card shows the exercises of its group below. #}
+        <div data-builder-groups>
+          <ul class="card-grid" aria-label="Grupos musculares">
+            {% for muscle_group, exercises in muscle_groups %}
+              <li>
+                <button class="library-card" type="button" data-builder-show-group="builder-group-{{ loop.index }}">
+                  {{ muscle_group_card_content(muscle_group, exercises|length) }}
+                </button>
+              </li>
+            {% endfor %}
+          </ul>
+        </div>
+
+        {% for muscle_group, exercises in muscle_groups %}
+          <div class="builder-group" id="builder-group-{{ loop.index }}" data-builder-group hidden>
+            <div class="builder-group-header">
+              <button class="btn btn-secondary btn-small" type="button" data-builder-show-groups>← Grupos musculares</button>
+              <h3 class="builder-group-title{% if muscle_group == 'XXXXX' %} unclassified{% endif %}" tabindex="-1">{{ muscle_group }}</h3>
+            </div>
+            <p class="muted builder-hint">Selecione um exercício para ver o histórico e adicioná-lo ao modelo.</p>
+            <ul class="card-grid" aria-label="Exercícios de {{ muscle_group }}">
+              {% for exercise in exercises %}
+                <li>{{ exercise_card(exercise, selectable=true) }}</li>
+              {% endfor %}
+            </ul>
+          </div>
+        {% endfor %}
+      {% else %}
+        <div class="panel empty-state">
+          <p>Nenhum exercício na biblioteca.</p>
+        </div>
+      {% endif %}
+    </section>
+
+    <section class="section panel panel-body" aria-labelledby="selected-exercises-title">
+      <h2 id="selected-exercises-title">Exercícios do modelo (<span data-selected-count>0</span>)</h2>
+      <p class="muted" data-selected-empty>Nenhum exercício adicionado.</p>
+      <ol class="selected-exercises" data-selected-list></ol>
+    </section>
+
+    <div class="builder-submit">
+      <p class="alert alert-error" data-builder-error role="alert" hidden></p>
+      <button class="btn btn-primary" type="submit" data-builder-submit>Criar modelo</button>
+    </div>
+  </form>
+
+  {% set exercise_modal_add_button = true %}
+  {% include "partials/exercise_modal.html" %}
+{% endblock %}
+
+{% block scripts %}
+  <script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/exercise_history.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/template_builder.js') }}"></script>
+{% endblock %}

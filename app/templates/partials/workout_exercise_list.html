@@ -1,0 +1,95 @@
+{#
+  Exercise list of the workout page: one collapsible card per exercise, with
+  its actions and its sets area.
+
+  Rendered inside the workout page and, after an exercise is added, removed or
+  moved with fetch(), returned by those routes so workouts.js can replace the
+  whole list (positions, ↑/↓ and the counts all change together). Expects:
+  workout, workout_exercises, set_error, set_form_values and
+  failed_workout_exercise_id.
+#}
+{% from "partials/icons.html" import chevron_icon %}
+{# A completed session is read-only: only the history remains. #}
+{% set editable = not workout.is_completed %}
+<div data-exercise-list>
+  {% if workout_exercises %}
+    <ol class="exercise-list">
+      {% for workout_exercise in workout_exercises %}
+        {% set exercise = workout_exercise.exercise %}
+        {% set exercise_name = exercise.name %}
+        {#
+          Exercises start collapsed. The only exception is a failed add-set
+          submission without JavaScript, which must show the error.
+        #}
+        {% set expanded = set_error and failed_workout_exercise_id == workout_exercise.id %}
+        <li class="panel exercise-card" id="exercise-{{ workout_exercise.id }}">
+          <div class="exercise-card-header">
+            {#
+              The toggle and the actions are siblings, so clicking Histórico,
+              ↑, ↓ or Remover never expands or collapses the exercise.
+            #}
+            <h3 class="exercise-card-title">
+              <button
+                class="exercise-toggle"
+                type="button"
+                aria-expanded="{{ 'true' if expanded else 'false' }}"
+                aria-controls="exercise-{{ workout_exercise.id }}-body"
+                data-exercise-toggle
+              >
+                <span class="position-badge" aria-hidden="true">{{ workout_exercise.position }}</span>
+                <span class="exercise-toggle-text">
+                  <span class="exercise-toggle-name">{{ exercise_name }}</span>
+                  <span class="exercise-toggle-muscles">{{ exercise.muscle_group }} / {{ exercise.muscle_subgroup }}</span>
+                </span>
+                {{ chevron_icon() }}
+              </button>
+            </h3>
+            <div class="actions">
+              <button
+                class="btn btn-secondary btn-small"
+                type="button"
+                aria-haspopup="dialog"
+                data-history-url="{{ url_for('exercises.exercise_history', exercise_id=workout_exercise.exercise_id) }}"
+                data-exercise-name="{{ exercise_name }}"
+              >Histórico<span class="visually-hidden"> de {{ exercise_name }}</span></button>
+              {% if editable %}
+              {% if not loop.first %}
+                <form class="inline-form" action="{{ url_for('workouts.move_workout_exercise_up', workout_id=workout.id, exercise_id=workout_exercise.exercise_id) }}" method="post" data-exercise-form="move-up">
+                  <button class="btn btn-secondary btn-small btn-icon" type="submit" aria-label="Mover {{ exercise_name }} para cima" title="Mover para cima">↑</button>
+                </form>
+              {% endif %}
+              {% if not loop.last %}
+                <form class="inline-form" action="{{ url_for('workouts.move_workout_exercise_down', workout_id=workout.id, exercise_id=workout_exercise.exercise_id) }}" method="post" data-exercise-form="move-down">
+                  <button class="btn btn-secondary btn-small btn-icon" type="submit" aria-label="Mover {{ exercise_name }} para baixo" title="Mover para baixo">↓</button>
+                </form>
+              {% endif %}
+              <form class="inline-form" action="{{ url_for('workouts.delete_workout_exercise', workout_id=workout.id, exercise_id=workout_exercise.exercise_id) }}" method="post" data-exercise-form="remove"
+                data-confirm-dialog="remove-exercise-dialog" data-confirm-name="{{ exercise_name }}">
+                <button class="btn btn-danger btn-small" type="submit">Remover<span class="visually-hidden"> {{ exercise_name }}</span></button>
+              </form>
+              {% endif %}
+            </div>
+          </div>
+
+          <div class="exercise-card-body" id="exercise-{{ workout_exercise.id }}-body"{% if not expanded %} hidden{% endif %}>
+            {# Success/error messages of set changes made with fetch(). #}
+            <p class="set-feedback" data-set-feedback role="status" aria-live="polite"></p>
+            {% include "partials/workout_exercise_sets.html" %}
+          </div>
+        </li>
+      {% endfor %}
+    </ol>
+    {% if editable %}
+      <p class="form-hint">Use 0 kg para exercícios com peso corporal.</p>
+    {% endif %}
+  {% elif editable %}
+    <div class="panel empty-state">
+      <p>Nenhum exercício adicionado a este treino.</p>
+      <p class="muted">Escolha um exercício abaixo para começar a registrar as séries.</p>
+    </div>
+  {% else %}
+    <div class="panel empty-state">
+      <p>Nenhum exercício registrado neste treino.</p>
+    </div>
+  {% endif %}
+</div>

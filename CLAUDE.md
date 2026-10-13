@@ -113,7 +113,15 @@ Remember:
 * `Workout` represents a workout session;
 * `Exercise` represents a reusable exercise;
 * `WorkoutExercise` represents an exercise occurrence within a workout;
-* `WorkoutSet` represents an individual set.
+* `WorkoutSet` represents an individual set;
+* `WorkoutTemplate` represents a reusable list of exercises from which sessions are started;
+* `WorkoutTemplateExercise` represents an exercise of a template, at a given position.
+
+Sessions are created only by starting a template. The session copies the template's name and exercises and keeps no reference to it, so templates and sessions never affect each other.
+
+Template names are trimmed, required and unique case-insensitively; a template needs at least one exercise, without repetitions.
+
+`Workout.completed_at` marks a completed session. A session can be completed when it has at least one set in any of its exercises. A completed session is read-only (name, date, exercises, order and sets) and can only be deleted. Routes that change a session must go through `_lock_in_progress_workout_or_404` in `app/routes/workouts.py`, which keeps the session from being completed while the change is saved.
 
 Preserve the existing foreign-key and deletion rules.
 
@@ -130,11 +138,16 @@ Respect the existing domain rules:
 * exercise positions are positive;
 * set positions are positive;
 * repetitions are positive;
+* positions and repetitions are at most `2^63 - 1`, the largest SQLite INTEGER;
 * weight cannot be negative;
 * weight has at most two decimal places;
+* weight is a finite number of at most `999999.99` kg, the largest value of its `Numeric(8, 2)` column (SQLite does not enforce the declared precision);
 * bodyweight/no external load is represented by `0 kg`;
 * the same exercise cannot appear twice in one workout;
-* set positions must be unique within an exercise occurrence.
+* set positions must be unique within an exercise occurrence;
+* ids received in URLs or forms are valid only up to `2^63 - 1`.
+
+Values beyond these limits are rejected before anything is written: an excessive repetition count or weight gets the usual set validation error (HTTP 400 for fetch requests), and an id beyond the limit is handled as an unknown id (HTTP 404 in URLs and when adding an exercise to a session; the invalid exercise list message when creating a template).
 
 Do not silently change these rules.
 

@@ -168,6 +168,31 @@ a:hover {
   color: var(--color-text-muted);
 }
 
+/* Session status next to the workout date. */
+.status-badge {
+  display: inline-block;
+  margin-left: var(--space-2);
+  padding: 0.1rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
+.status-badge-in-progress {
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+}
+
+.status-badge-completed {
+  background: var(--color-success-soft);
+  color: var(--color-success);
+}
+
+.completed-notice {
+  margin-bottom: var(--space-5);
+}
+
 .back-link {
   display: inline-block;
   margin-bottom: var(--space-3);
@@ -606,6 +631,15 @@ select:focus-visible {
   display: none;
 }
 
+/* Messages of exercise changes: above the list and below the add form. */
+.list-feedback {
+  margin: 0 0 var(--space-3);
+}
+
+.add-exercise-feedback {
+  margin: var(--space-3) 0 0;
+}
+
 .set-feedback-success {
   background: var(--color-success-soft);
   color: var(--color-success);
@@ -914,6 +948,114 @@ a.library-card .library-card-title {
   list-style: none;
 }
 
+/* ---------- Workout templates ---------- */
+
+.template-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-5);
+}
+
+.template-card-title {
+  font-size: 1.1rem;
+}
+
+.template-exercises {
+  flex-grow: 1;
+  margin: 0;
+  padding-left: 1.25rem;
+  font-size: 0.95rem;
+}
+
+.template-card-actions {
+  margin-top: var(--space-2);
+}
+
+/* Template builder */
+
+.builder-feedback {
+  margin-bottom: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-small);
+  background: var(--color-success-soft);
+  color: var(--color-success);
+  font-size: 0.9rem;
+}
+
+.builder-feedback:empty {
+  display: none;
+}
+
+.builder-group-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.builder-group-title {
+  font-size: 1.15rem;
+}
+
+.builder-hint {
+  margin: var(--space-2) 0 var(--space-4);
+}
+
+.library-card.is-selected {
+  border-color: var(--color-success);
+}
+
+.library-card-selected {
+  color: var(--color-success);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.selected-exercises {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.selected-exercise {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-small);
+}
+
+.selected-exercise-text {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  min-width: 0;
+}
+
+.selected-exercise-name {
+  font-weight: 600;
+}
+
+.selected-exercise-subgroup {
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+.builder-submit {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+}
+
+.builder-submit .alert {
+  align-self: stretch;
+}
+
 /* ---------- Modal ---------- */
 
 /* Keeps the page behind an open modal from scrolling. */
@@ -957,6 +1099,13 @@ body.modal-open {
   border-bottom: 1px solid var(--color-border);
 }
 
+.modal-header-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 .modal-close {
   display: inline-flex;
   align-items: center;
@@ -981,6 +1130,10 @@ body.modal-open {
 .modal-body {
   overflow-y: auto;
   padding: var(--space-5);
+}
+
+.modal-body p + p {
+  margin-top: var(--space-2);
 }
 
 .modal-message {

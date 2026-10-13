@@ -2,14 +2,14 @@ import calendar
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 
-from flask import Blueprint, abort, flash, jsonify, redirect, render_template, request, url_for
-from sqlalchemy import func, select
+from flask import Blueprint, abort, flash, jsonify, make_response, redirect, render_template, request, url_for
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload, selectinload
 
 from app.database import db
 from app.exercise_library import group_exercises
-from app.models import Exercise, Workout, WorkoutExercise, WorkoutSet
+from app.models import SQLITE_MAX_INTEGER, Exercise, Workout, WorkoutExercise, WorkoutSet, utc_now
 
 
 bp = Blueprint("workouts", __name__, url_prefix="/workouts")
@@ -31,6 +31,9 @@ MONTH_NAMES = (
 WEEKDAY_NAMES = ("Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom")
 
 SET_VALIDATION_ERROR = "Informe repetições positivas e um peso válido com até duas casas decimais."
+COMPLETED_WORKOUT_ERROR = "Este treino já foi concluído e não pode mais ser alterado."
+COMPLETION_REQUIREMENT_ERROR = "Registre pelo menos uma série em algum exercício antes de concluir o treino."
+DUPLICATE_EXERCISE_ERROR = "Este exercício já foi adicionado ao treino."
 
 
 @bp.get("")
@@ -75,31 +78,15 @@ def workout_detail(workout_id):
 
 @bp.get("/new")
 def new_workout():
-    return render_template("workouts/form.html", workout=None, form_date="", form_name="")
-
-
-@bp.post("")
-def create_workout():
-    form_date, form_name = _form_values()
-
-    try:
-        workout = Workout(date=_parse_date(form_date), name=form_name)
-        db.session.add(workout)
-        db.session.commit()
-    except ValueError:
-        return _render_form_with_error(
-            workout=None,
-            form_date=form_date,
-            form_name=form_name,
-        )
-
-    flash("Treino criado com sucesso.", "success")
-    return redirect(url_for("workouts.workout_detail", workout_id=workout.id))
+    # Sessions are no longer created empty: they are started from a template
+    # (POST /templates/<id>/start). The old address leads to the template
+    # builder so existing links and bookmarks keep working.
+    return redirect(url_for("workout_templates.new_template"))
 
 
 @bp.get("/<int:workout_id>/edit")
 def edit_workout(workout_id):
-    workout = _get_workout_or_404(workout_id)
+    workout = _get_in_progress_workout_or_404(workout_id)
     return render_template(
         "workouts/form.html",
         workout=workout,
@@ -110,7 +97,7 @@ def edit_workout(workout_id):
 
 @bp.post("/<int:workout_id>/edit")
 def update_workout(workout_id):
-    workout = _get_workout_or_404(workout_id)
+    workout = _lock_in_progress_workout_or_404(workout_id)
     form_date, form_name = _form_values()
 
     try:
@@ -118,6 +105,7 @@ def update_workout(workout_id):
         workout.name = form_name
         db.session.commit()
     except ValueError:
+        db.session.rollback()
         return _render_form_with_error(
             workout=workout,
             form_date=form_date,
@@ -138,10 +126,47 @@ def delete_workout(workout_id):
     return redirect(url_for("workouts.list_workouts"))
 
 
+@bp.post("/<int:workout_id>/complete")
+def complete_workout(workout_id):
+    workout = _get_in_progress_workout_or_404(workout_id)
+
+    # The rule and the change are a single UPDATE: the session is completed
+    # only if it is still in progress and has at least one set in any of its
+    # exercises at that moment. Checking first and saving afterwards would let
+    # a set deleted (or a completion made) in between slip through.
+    has_a_set = (
+        select(WorkoutSet.id)
+        .join(WorkoutSet.workout_exercise)
+        .where(WorkoutExercise.workout_id == workout.id)
+        .exists()
+    )
+    result = db.session.execute(
+        update(Workout)
+        .where(Workout.id == workout.id, Workout.completed_at.is_(None), has_a_set)
+        .values(completed_at=utc_now())
+        .execution_options(synchronize_session=False)
+    )
+    # The UPDATE bypasses the already loaded object; read it again when used.
+    db.session.expire(workout)
+    if result.rowcount != 1:
+        db.session.rollback()
+        message = COMPLETED_WORKOUT_ERROR if workout.is_completed else COMPLETION_REQUIREMENT_ERROR
+        flash(message, "error")
+        return redirect(url_for("workouts.workout_detail", workout_id=workout.id))
+
+    db.session.commit()
+    flash("Treino concluído.", "success")
+    return redirect(url_for("workouts.workout_detail", workout_id=workout.id))
+
+
 @bp.post("/<int:workout_id>/exercises")
 def add_workout_exercise(workout_id):
-    _get_workout_or_404(workout_id)
+    workout = _lock_in_progress_workout_or_404(workout_id)
     exercise_id = request.form.get("exercise_id", type=int)
+    # A missing, non-numeric or out-of-range id is treated like an unknown
+    # exercise (an id beyond the SQLite INTEGER range would make the query fail).
+    if exercise_id is None or not 0 < exercise_id <= SQLITE_MAX_INTEGER:
+        abort(404)
     exercise = db.session.get(Exercise, exercise_id)
     if exercise is None:
         abort(404)
@@ -153,8 +178,7 @@ def add_workout_exercise(workout_id):
         )
     )
     if existing_workout_exercise is not None:
-        flash("Este exercício já foi adicionado ao treino.", "error")
-        return redirect(url_for("workouts.workout_detail", workout_id=workout_id))
+        return _duplicate_exercise_response(workout_id)
 
     last_position = db.session.scalar(
         select(func.max(WorkoutExercise.position)).where(
@@ -172,9 +196,12 @@ def add_workout_exercise(workout_id):
         db.session.commit()
     except IntegrityError:
         db.session.rollback()
-        flash("Este exercício já foi adicionado ao treino.", "error")
-        return redirect(url_for("workouts.workout_detail", workout_id=workout_id))
+        return _duplicate_exercise_response(workout_id)
 
+    if _wants_json():
+        return _exercises_json_response(
+            workout, "Exercício adicionado ao treino.", added_workout_exercise_id=workout_exercise.id
+        )
     flash("Exercício adicionado ao treino.", "success")
     # The anchor makes the workout page open (expand) the new exercise.
     return redirect(
@@ -188,7 +215,7 @@ def add_workout_exercise(workout_id):
 
 @bp.post("/<int:workout_id>/exercises/<int:exercise_id>/delete")
 def delete_workout_exercise(workout_id, exercise_id):
-    _get_workout_or_404(workout_id)
+    workout = _lock_in_progress_workout_or_404(workout_id)
     workout_exercise = _get_workout_exercise_or_404(workout_id, exercise_id)
     removed_position = workout_exercise.position
     db.session.delete(workout_exercise)
@@ -207,13 +234,15 @@ def delete_workout_exercise(workout_id, exercise_id):
         db.session.flush()
 
     db.session.commit()
+    if _wants_json():
+        return _exercises_json_response(workout, "Exercício removido do treino.")
     flash("Exercício removido do treino.", "success")
     return redirect(url_for("workouts.workout_detail", workout_id=workout_id))
 
 
 @bp.post("/<int:workout_id>/exercises/<int:exercise_id>/move-up")
 def move_workout_exercise_up(workout_id, exercise_id):
-    _get_workout_or_404(workout_id)
+    workout = _lock_in_progress_workout_or_404(workout_id)
     workout_exercise = _get_workout_exercise_or_404(workout_id, exercise_id)
     previous_exercise = db.session.scalar(
         select(WorkoutExercise).where(
@@ -225,12 +254,14 @@ def move_workout_exercise_up(workout_id, exercise_id):
         _swap_positions(workout_exercise, previous_exercise, workout_id)
         db.session.commit()
 
+    if _wants_json():
+        return _exercises_json_response(workout, "Ordem dos exercícios atualizada.")
     return redirect(url_for("workouts.workout_detail", workout_id=workout_id))
 
 
 @bp.post("/<int:workout_id>/exercises/<int:exercise_id>/move-down")
 def move_workout_exercise_down(workout_id, exercise_id):
-    _get_workout_or_404(workout_id)
+    workout = _lock_in_progress_workout_or_404(workout_id)
     workout_exercise = _get_workout_exercise_or_404(workout_id, exercise_id)
     next_exercise = db.session.scalar(
         select(WorkoutExercise).where(
@@ -242,12 +273,14 @@ def move_workout_exercise_down(workout_id, exercise_id):
         _swap_positions(workout_exercise, next_exercise, workout_id)
         db.session.commit()
 
+    if _wants_json():
+        return _exercises_json_response(workout, "Ordem dos exercícios atualizada.")
     return redirect(url_for("workouts.workout_detail", workout_id=workout_id))
 
 
 @bp.post("/<int:workout_id>/exercises/<int:exercise_id>/sets")
 def add_workout_set(workout_id, exercise_id):
-    workout = _get_workout_or_404(workout_id)
+    workout = _lock_in_progress_workout_or_404(workout_id)
     workout_exercise = _get_workout_exercise_or_404(workout_id, exercise_id)
     repetitions, weight_kg = _set_form_values()
 
@@ -294,7 +327,7 @@ def add_workout_set(workout_id, exercise_id):
 
 @bp.get("/<int:workout_id>/exercises/<int:exercise_id>/sets/<int:set_id>/edit")
 def edit_workout_set(workout_id, exercise_id, set_id):
-    workout = _get_workout_or_404(workout_id)
+    workout = _get_in_progress_workout_or_404(workout_id)
     workout_exercise = _get_workout_exercise_or_404(workout_id, exercise_id)
     workout_set = _get_workout_set_or_404(workout_exercise.id, set_id)
     return render_template(
@@ -309,7 +342,7 @@ def edit_workout_set(workout_id, exercise_id, set_id):
 
 @bp.post("/<int:workout_id>/exercises/<int:exercise_id>/sets/<int:set_id>/edit")
 def update_workout_set(workout_id, exercise_id, set_id):
-    workout = _get_workout_or_404(workout_id)
+    workout = _lock_in_progress_workout_or_404(workout_id)
     workout_exercise = _get_workout_exercise_or_404(workout_id, exercise_id)
     workout_set = _get_workout_set_or_404(workout_exercise.id, set_id)
     repetitions, weight_kg = _set_form_values()
@@ -338,7 +371,7 @@ def update_workout_set(workout_id, exercise_id, set_id):
 
 @bp.post("/<int:workout_id>/exercises/<int:exercise_id>/sets/<int:set_id>/delete")
 def delete_workout_set(workout_id, exercise_id, set_id):
-    workout = _get_workout_or_404(workout_id)
+    workout = _lock_in_progress_workout_or_404(workout_id)
     workout_exercise = _get_workout_exercise_or_404(workout_id, exercise_id)
     workout_set = _get_workout_set_or_404(workout_exercise.id, set_id)
     removed_position = workout_set.position
@@ -369,6 +402,61 @@ def _get_workout_or_404(workout_id):
     if workout is None:
         abort(404)
     return workout
+
+
+def _get_in_progress_workout_or_404(workout_id):
+    """Return a workout that can still be changed, or stop the request.
+
+    Completed sessions are read-only. This check alone is used by the pages
+    that only show an edit form; routes that change the session use
+    _lock_in_progress_workout_or_404, which also holds the session until the
+    change is saved.
+    """
+    workout = _get_workout_or_404(workout_id)
+    if workout.is_completed:
+        _reject_completed_workout(workout.id)
+    return workout
+
+
+def _lock_in_progress_workout_or_404(workout_id):
+    """Return a workout that can still be changed, and keep it so until commit.
+
+    Checking completed_at and saving afterwards is not enough: another request
+    could complete the session in between. So every change starts with a
+    conditional UPDATE (only while completed_at is NULL), which also records
+    when the session last changed. It is the first write of the transaction:
+    Python's sqlite3 driver opens the transaction right before it, and SQLite
+    allows one writer at a time. From then until commit or rollback, a
+    completion of this session waits and afterwards sees this change; a
+    completion saved before it leaves no row to update, and the request stops
+    without changing anything.
+    """
+    workout = _get_in_progress_workout_or_404(workout_id)
+    result = db.session.execute(
+        update(Workout)
+        .where(Workout.id == workout.id, Workout.completed_at.is_(None))
+        .values(updated_at=utc_now())
+        .execution_options(synchronize_session=False)
+    )
+    if result.rowcount != 1:
+        db.session.rollback()
+        # Completed or deleted by another request after the check above. The
+        # rollback expired the loaded workout, and reading it (even its id)
+        # would fail if its row is gone, so the row is looked up directly.
+        still_exists = db.session.scalar(select(Workout.id).where(Workout.id == workout_id))
+        if still_exists is None:
+            abort(404)
+        _reject_completed_workout(workout_id)
+    return workout
+
+
+def _reject_completed_workout(workout_id):
+    """Stop the request: fetch() calls receive a 409 with the message, regular
+    forms are redirected back to the workout page."""
+    if _wants_json():
+        abort(make_response(jsonify({"error": COMPLETED_WORKOUT_ERROR}), 409))
+    flash(COMPLETED_WORKOUT_ERROR, "error")
+    abort(redirect(url_for("workouts.workout_detail", workout_id=workout_id)))
 
 
 def _get_workout_exercise_or_404(workout_id, exercise_id):
@@ -448,8 +536,8 @@ def _render_workout_detail(
 
 
 def _wants_json():
-    # The set forms on the workout page are sent with fetch() asking for JSON,
-    # so the page can be updated without reloading. A regular form submission
+    # The set and exercise forms on the workout page are sent with fetch()
+    # asking for JSON, so the page can be updated without reloading. A regular form submission
     # (no JavaScript) asks for HTML and keeps the redirect/re-render behaviour.
     return (
         request.accept_mimetypes.best_match(["text/html", "application/json"])
@@ -490,6 +578,42 @@ def _sets_json_response(workout, workout_exercise, message):
 
 def _set_error_json(message):
     return jsonify({"error": message}), 400
+
+
+def _exercises_json_response(workout, message, added_workout_exercise_id=None):
+    """Return the re-rendered exercise list after an exercise is added, removed or moved.
+
+    The whole list is returned because these changes renumber positions and
+    change which exercises show ↑ and ↓. The HTML comes from the same template
+    used by the full page.
+    """
+    # Reload from the database so the list shows the order and positions as stored.
+    db.session.expire_all()
+    workout_exercises = _workout_exercises(workout.id)
+    return jsonify(
+        {
+            "message": message,
+            "exercises_html": render_template(
+                "partials/workout_exercise_list.html",
+                workout=workout,
+                workout_exercises=workout_exercises,
+                set_error=None,
+                set_form_values={},
+                failed_workout_exercise_id=None,
+            ),
+            "exercise_count": len(workout_exercises),
+            "total_sets": sum(len(workout_exercise.sets) for workout_exercise in workout_exercises),
+            # Lets the page open the exercise that was just added.
+            "added_workout_exercise_id": added_workout_exercise_id,
+        }
+    )
+
+
+def _duplicate_exercise_response(workout_id):
+    if _wants_json():
+        return jsonify({"error": DUPLICATE_EXERCISE_ERROR}), 400
+    flash(DUPLICATE_EXERCISE_ERROR, "error")
+    return redirect(url_for("workouts.workout_detail", workout_id=workout_id))
 
 
 def _set_form_values():

@@ -347,7 +347,7 @@ def test_workout_page_loads_chart_library_and_history_script(client, session):
 
 
 def test_other_pages_do_not_load_history_scripts(client):
-    for url in ("/workouts", "/exercises", "/workouts/new"):
+    for url in ("/workouts", "/exercises", "/templates"):
         assert "chart.umd.min.js" not in client.get(url).get_data(as_text=True)
 
 

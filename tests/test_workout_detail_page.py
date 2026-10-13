@@ -347,7 +347,7 @@ def test_workout_page_can_delete_the_workout(client, session):
 def test_workout_pages_link_back_to_calendar(client, session):
     workout = create_workout(session)
 
-    for url in (f"/workouts/{workout.id}", "/workouts/new", f"/workouts/{workout.id}/edit"):
+    for url in (f"/workouts/{workout.id}", f"/workouts/{workout.id}/edit", "/templates"):
         assert '<a class="back-link" href="/workouts">← Treinos</a>' in client.get(url).get_data(as_text=True)
 
 

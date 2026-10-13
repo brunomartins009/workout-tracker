@@ -1,0 +1,31 @@
+{#
+  Cards of the exercise library, shared by the library pages and the workout
+  template builder, so both show muscle groups and exercises the same way.
+#}
+
+{# Content of a muscle group card; the caller chooses a link or a button. #}
+{% macro muscle_group_card_content(muscle_group, count) -%}
+  <span class="library-card-title{% if muscle_group == 'XXXXX' %} unclassified{% endif %}">{{ muscle_group }}</span>
+  <span class="library-card-detail category-count">{{ count }} {{ 'exercício' if count == 1 else 'exercícios' }}</span>
+{%- endmacro %}
+
+{#
+  An exercise card opens the exercise modal (exercise_history.js). In the
+  template builder it also shows whether the exercise was already added.
+#}
+{% macro exercise_card(exercise, selectable=false) -%}
+  <button
+    class="library-card"
+    type="button"
+    aria-haspopup="dialog"
+    data-history-url="{{ url_for('exercises.exercise_history', exercise_id=exercise.id) }}"
+    data-exercise-name="{{ exercise.name }}"
+    {% if selectable %}data-exercise-id="{{ exercise.id }}" data-exercise-subgroup="{{ exercise.muscle_subgroup }}"{% endif %}
+  >
+    <span class="library-card-title">{{ exercise.name }}</span>
+    <span class="library-card-detail exercise-subgroup{% if exercise.muscle_subgroup == 'XXXXX' %} unclassified{% endif %}">{{ exercise.muscle_subgroup }}</span>
+    {% if selectable %}
+      <span class="library-card-selected" data-selected-mark hidden>✓ Adicionado ao modelo</span>
+    {% endif %}
+  </button>
+{%- endmacro %}

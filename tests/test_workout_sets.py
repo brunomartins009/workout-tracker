@@ -157,7 +157,16 @@ def test_new_sets_receive_sequential_positions(client, session):
 
 @pytest.mark.parametrize(
     ("repetitions", "weight_kg"),
-    [("0", "20"), ("-1", "20"), ("10", "-0.01"), ("10", "20.123")],
+    [
+        ("0", "20"),
+        ("-1", "20"),
+        ("10", "-0.01"),
+        ("10", "20.123"),
+        # Not finite: Decimal() accepts them, the weight rule must not.
+        ("10", "NaN"),
+        ("10", "Infinity"),
+        ("10", "-Infinity"),
+    ],
 )
 def test_rejects_invalid_set_values(client, session, repetitions, weight_kg):
     workout = create_workout(session)
@@ -207,20 +216,26 @@ def test_editing_set_updates_repetitions_and_weight(client, session):
     assert updated_set.weight_kg == Decimal("25.50")
 
 
-def test_invalid_set_edit_does_not_persist_changes(client, session):
+@pytest.mark.parametrize(
+    ("repetitions", "weight_kg"),
+    [("0", "30"), ("10", "NaN"), ("10", "Infinity"), ("10", "-Infinity")],
+)
+def test_invalid_set_edit_does_not_persist_changes(client, session, repetitions, weight_kg):
     workout = create_workout(session)
     exercise, workout_exercise = create_workout_exercise(session, workout)
     workout_set = create_set(session, workout_exercise, 1)
 
     response = client.post(
         f"/workouts/{workout.id}/exercises/{exercise.id}/sets/{workout_set.id}/edit",
-        data={"repetitions": "0", "weight_kg": "30"},
+        data={"repetitions": repetitions, "weight_kg": weight_kg},
     )
 
+    session.expire_all()
     unchanged_set = session.get(WorkoutSet, workout_set.id)
     assert response.status_code == 200
     assert unchanged_set.repetitions == 10
     assert unchanged_set.weight_kg == Decimal("20.00")
+    assert ordered_sets(session, workout_exercise) == [unchanged_set]
 
 
 def test_nonexistent_or_unrelated_set_returns_404(client, session):

@@ -5,7 +5,11 @@
 {% block content %}
   <header class="page-header">
     <h1>Treinos</h1>
-    <a class="btn btn-primary" href="{{ url_for('workouts.new_workout') }}">+ Novo treino</a>
+    <div class="actions">
+      {# Sessions start from a template; "Novo treino" builds a new template. #}
+      <a class="btn btn-secondary" href="{{ url_for('workout_templates.new_template') }}">Novo treino</a>
+      <a class="btn btn-primary" href="{{ url_for('workout_templates.list_templates') }}">Iniciar treino</a>
+    </div>
   </header>
 
   <section class="panel calendar" aria-labelledby="calendar-title">

@@ -1,7 +1,9 @@
-// Exercise modal, used on the workout detail page and on the library category
-// page (markup in templates/partials/exercise_modal.html).
+// Exercise modal, used on the workout detail page, on the library category
+// page and in the template builder, where template_builder.js adds the
+// "Adicionar" button (markup in templates/partials/exercise_modal.html).
 //
-// Each element with data-history-url points to GET /exercises/<id>/history.
+// Each element with data-history-url (also ones added to the page later)
+// points to GET /exercises/<id>/history.
 // The JSON already contains the exercise, the table rows (most recent first,
 // already limited) and the chart series (complete, oldest first), so this file
 // only opens the dialog and renders them.
@@ -26,10 +28,14 @@
   // exercise or closed the modal.
   let currentRequest = 0;
 
-  document.querySelectorAll("[data-history-url]").forEach(function (button) {
-    button.addEventListener("click", function () {
+  // Delegated to the document: the workout page replaces its exercise list
+  // (and the Histórico buttons in it) after an exercise is added, removed or
+  // moved, and the new buttons must open the modal too.
+  document.addEventListener("click", function (event) {
+    const button = event.target.closest("[data-history-url]");
+    if (button) {
       openHistory(button.dataset.historyUrl, button.dataset.exerciseName);
-    });
+    }
   });
 
   dialog.querySelector("[data-history-close]").addEventListener("click", function () {
