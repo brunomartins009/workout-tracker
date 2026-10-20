@@ -4,16 +4,18 @@
 
   Rendered inside the workout page and, after an exercise is added, removed or
   moved with fetch(), returned by those routes so workouts.js can replace the
-  whole list (positions, ↑/↓ and the counts all change together). Expects:
+  whole list (positions and counts change together). Expects:
   workout, workout_exercises, set_error, set_form_values and
   failed_workout_exercise_id.
 #}
 {% from "partials/icons.html" import chevron_icon %}
 {# A completed session is read-only: only the history remains. #}
 {% set editable = not workout.is_completed %}
+{# Exercises are reordered by dragging their handle (sortable_list.js). #}
+{% set sortable = editable and workout_exercises|length > 1 %}
 <div data-exercise-list>
   {% if workout_exercises %}
-    <ol class="exercise-list">
+    <ol class="exercise-list"{% if sortable %} data-sortable-exercises data-reorder-url="{{ url_for('workouts.reorder_workout_exercises', workout_id=workout.id) }}"{% endif %}>
       {% for workout_exercise in workout_exercises %}
         {% set exercise = workout_exercise.exercise %}
         {% set exercise_name = exercise.name %}
@@ -22,12 +24,23 @@
           submission without JavaScript, which must show the error.
         #}
         {% set expanded = set_error and failed_workout_exercise_id == workout_exercise.id %}
-        <li class="panel exercise-card" id="exercise-{{ workout_exercise.id }}">
+        <li class="panel exercise-card" id="exercise-{{ workout_exercise.id }}" data-workout-exercise-id="{{ workout_exercise.id }}" data-position="{{ workout_exercise.position }}">
           <div class="exercise-card-header">
             {#
-              The toggle and the actions are siblings, so clicking Histórico,
-              ↑, ↓ or Remover never expands or collapses the exercise.
+              The handle, the toggle and the actions are siblings, so dragging
+              or clicking Histórico or Remover never expands or collapses the
+              exercise.
             #}
+            <div class="exercise-card-main">
+            {% if sortable %}
+              <button
+                class="drag-handle"
+                type="button"
+                data-drag-handle
+                aria-label="Reordenar {{ exercise_name }}, posição {{ workout_exercise.position }} de {{ workout_exercises|length }}. Arraste ou use as setas para cima e para baixo."
+                title="Arraste para reordenar"
+              >⠿</button>
+            {% endif %}
             <h3 class="exercise-card-title">
               <button
                 class="exercise-toggle"
@@ -40,10 +53,16 @@
                 <span class="exercise-toggle-text">
                   <span class="exercise-toggle-name">{{ exercise_name }}</span>
                   <span class="exercise-toggle-muscles">{{ exercise.muscle_group }} / {{ exercise.muscle_subgroup }}</span>
+                  {% if workout_exercise.target_sets is not none and workout_exercise.target_repetitions is not none %}
+                    {# Copied from the template when the session started. #}
+                    <span class="exercise-toggle-target">Meta: {{ workout_exercise.target_sets }} {{ 'série' if workout_exercise.target_sets == 1 else 'séries' }} × {{ workout_exercise.target_repetitions }} {{ 'repetição' if workout_exercise.target_repetitions == 1 else 'repetições' }}</span>
+                  {% endif %}
                 </span>
+                {% include "partials/exercise_progress.html" %}
                 {{ chevron_icon() }}
               </button>
             </h3>
+            </div>
             <div class="actions">
               <button
                 class="btn btn-secondary btn-small"
@@ -53,16 +72,6 @@
                 data-exercise-name="{{ exercise_name }}"
               >Histórico<span class="visually-hidden"> de {{ exercise_name }}</span></button>
               {% if editable %}
-              {% if not loop.first %}
-                <form class="inline-form" action="{{ url_for('workouts.move_workout_exercise_up', workout_id=workout.id, exercise_id=workout_exercise.exercise_id) }}" method="post" data-exercise-form="move-up">
-                  <button class="btn btn-secondary btn-small btn-icon" type="submit" aria-label="Mover {{ exercise_name }} para cima" title="Mover para cima">↑</button>
-                </form>
-              {% endif %}
-              {% if not loop.last %}
-                <form class="inline-form" action="{{ url_for('workouts.move_workout_exercise_down', workout_id=workout.id, exercise_id=workout_exercise.exercise_id) }}" method="post" data-exercise-form="move-down">
-                  <button class="btn btn-secondary btn-small btn-icon" type="submit" aria-label="Mover {{ exercise_name }} para baixo" title="Mover para baixo">↓</button>
-                </form>
-              {% endif %}
               <form class="inline-form" action="{{ url_for('workouts.delete_workout_exercise', workout_id=workout.id, exercise_id=workout_exercise.exercise_id) }}" method="post" data-exercise-form="remove"
                 data-confirm-dialog="remove-exercise-dialog" data-confirm-name="{{ exercise_name }}">
                 <button class="btn btn-danger btn-small" type="submit">Remover<span class="visually-hidden"> {{ exercise_name }}</span></button>

@@ -57,7 +57,7 @@ Use the existing stack:
 * CSS
 * JavaScript
 * pytest
-* Chart.js when charts are implemented
+* Chart.js, vendored in `app/static/vendor/`, for the exercise-history chart
 
 Do not introduce the following without explicit discussion:
 
@@ -104,7 +104,7 @@ Use SQLAlchemy for database access.
 
 Use the configured `db.session`.
 
-Do not create unrelated independent database connections or sessions.
+Do not create unrelated independent database connections or sessions. (The backup module reads the database through the application's engine; its own connections only open the backup file.)
 
 SQLite is the current database and should remain the database during the initial development stages.
 
@@ -119,13 +119,21 @@ Remember:
 
 Sessions are created only by starting a template. The session copies the template's name and exercises and keeps no reference to it, so templates and sessions never affect each other.
 
-Template names are trimmed, required and unique case-insensitively; a template needs at least one exercise, without repetitions.
+Template names are trimmed, required and unique case-insensitively; a template needs at least one exercise, without repetitions. Editing a template replaces its name and exercise list in one commit and never changes sessions.
+
+The exercise library is fixed: the `EXERCISES` list in `app/exercise_library.py` is the source of truth, synced with `flask --app run sync-exercise-library` (it never deletes exercises or changes their ids). The UI is read-only: there are no routes to create, edit or delete exercises.
+
+The progress of a session exercise (`2/4 séries`) counts recorded sets against the target sets. It does not say whether the target repetitions were reached.
 
 `Workout.completed_at` marks a completed session. A session can be completed when it has at least one set in any of its exercises. A completed session is read-only (name, date, exercises, order and sets) and can only be deleted. Routes that change a session must go through `_lock_in_progress_workout_or_404` in `app/routes/workouts.py`, which keeps the session from being completed while the change is saved.
 
 Preserve the existing foreign-key and deletion rules.
 
 Do not replace `create_all()` with a migration system unless schema evolution actually requires it.
+
+Changes to existing tables are additive only: a new column goes into `COLUMN_UPGRADES` in `app/schema.py`, and `pending_schema_changes()` must keep describing everything startup would add. On startup, a pending upgrade is applied only after `app/database_backup.py` has made and verified a backup in `instance/backups/`; if the backup fails, the application does not start. Never delete or overwrite those backups, and never restore one automatically.
+
+`instance/workout_tracker.db` holds real data. Never start the application, run tests or try changes against it; use temporary databases (the test fixtures already do).
 
 ---
 
@@ -145,7 +153,9 @@ Respect the existing domain rules:
 * bodyweight/no external load is represented by `0 kg`;
 * the same exercise cannot appear twice in one workout;
 * set positions must be unique within an exercise occurrence;
-* ids received in URLs or forms are valid only up to `2^63 - 1`.
+* ids received in URLs or forms are valid only up to `2^63 - 1`;
+* targets of a template or session exercise are optional; when present, target sets are whole numbers from 1 to 20 and target repetitions (per set) from 1 to 100;
+* targets are copied from the template when a session starts and are never linked to it; they are a reference only and never block recording sets or completing a session.
 
 Values beyond these limits are rejected before anything is written: an excessive repetition count or weight gets the usual set validation error (HTTP 400 for fetch requests), and an id beyond the limit is handled as an unknown id (HTTP 404 in URLs and when adding an exercise to a session; the invalid exercise list message when creating a template).
 
@@ -168,6 +178,14 @@ For focused development, specific tests may be executed, for example:
 ```bash
 python -m pytest -v tests/test_models.py
 ```
+
+To also see warnings (the suite currently runs without any):
+
+```bash
+python -m pytest -W default
+```
+
+Every test runs on its own temporary SQLite database (`tests/conftest.py`).
 
 Do not delete or weaken existing tests simply to make a new implementation pass.
 
@@ -283,17 +301,17 @@ The project is intentionally being developed incrementally.
 
 Do not implement future functionality ahead of the current feature unless explicitly requested.
 
-Current development order:
+Development order and current state:
 
-1. project setup and database;
-2. exercise CRUD;
-3. workout creation;
-4. set entry;
-5. history/details;
-6. charts;
-7. UI refinement.
+1. project setup and database — done (additive schema upgrades with a verified backup);
+2. exercise library — done: a fixed, read-only library (it replaced the planned exercise CRUD);
+3. workout creation — done, through templates with optional targets;
+4. set entry — done, with progress against the targets and session completion;
+5. history/details — done: monthly calendar and session page;
+6. charts — done: exercise history table and chart;
+7. UI refinement — ongoing.
 
-Keep the implementation focused on the current phase.
+Keep each change focused on the requested feature or fix. Future ideas are listed in `ARCHITECTURE.md` (Future Evolution) and should not be implemented ahead of a request.
 
 ---
 

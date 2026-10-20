@@ -25,7 +25,6 @@ def add_exercise(session, workout, name, position):
     ("url", "current_link"),
     [
         ("/workouts", 'href="/workouts" aria-current="page">Treinos</a>'),
-        ("/templates", 'href="/workouts" aria-current="page">Treinos</a>'),
         ("/templates/new", 'href="/workouts" aria-current="page">Treinos</a>'),
         ("/exercises", 'href="/exercises" aria-current="page">Exercícios</a>'),
     ],
@@ -40,11 +39,14 @@ def test_navigation_links_to_both_areas_and_marks_current_area(client, url, curr
     assert page.count('aria-current="page"') == 1
 
 
-def test_workout_list_shows_new_and_start_actions(client):
+def test_workout_list_offers_new_template_and_template_cards(client):
     workouts_page = client.get("/workouts").get_data(as_text=True)
+    header = workouts_page.split('<header class="page-header">')[1].split("</header>")[0]
 
-    assert '<a class="btn btn-secondary" href="/templates/new">Novo treino</a>' in workouts_page
-    assert '<a class="btn btn-primary" href="/templates">Iniciar treino</a>' in workouts_page
+    # Sessions are started from a template's overview (cards below the calendar).
+    assert '<a class="btn btn-primary" href="/templates/new">Novo modelo</a>' in header
+    assert "Iniciar treino" not in header
+    assert 'id="modelos"' in workouts_page
 
 
 def test_success_flash_is_rendered_as_status_message(client, session):

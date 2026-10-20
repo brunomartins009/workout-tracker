@@ -37,7 +37,7 @@ def test_builder_page_has_name_field_selection_panel_and_create_button(client):
     page = response.get_data(as_text=True)
     assert response.status_code == 200
     assert '<input id="template-name" name="name" type="text"' in page
-    assert 'action="/templates" method="post" data-template-builder' in page
+    assert re.search(r'<form\s+id="template-builder-form"\s+action="/templates"\s+method="post"\s+data-template-builder', page)
     assert "data-selected-list" in page
     assert "Criar modelo</button>" in page
     # The create button comes after the picker and the selection panel.
@@ -110,16 +110,15 @@ def test_builder_with_empty_library_shows_empty_state(client):
 
 
 def test_templates_page_links_to_builder(client):
-    page = client.get("/templates").get_data(as_text=True)
+    page = client.get("/workouts").get_data(as_text=True)
 
     assert 'href="/templates/new">Novo modelo</a>' in page
 
 
 def test_builder_script_is_served_and_does_not_use_inner_html(client):
-    response = client.get("/static/js/template_builder.js")
-
-    script = response.get_data(as_text=True)
-    assert response.status_code == 200
+    with client.get("/static/js/template_builder.js") as response:
+        script = response.get_data(as_text=True)
+        assert response.status_code == 200
     assert ".innerHTML" not in script
     assert 'data.append("exercise_ids"' in script
     assert 'Accept: "application/json"' in script
@@ -129,7 +128,9 @@ def test_created_template_message_is_shown_after_fetch_redirect(client, session)
     bench = create_exercise(session, "Supino reto")
 
     response = client.post(
-        "/templates", data={"name": "Push", "exercise_ids": [str(bench.id)]}, headers=JSON_HEADERS
+        "/templates",
+        data={"name": "Push", "exercise_ids": [str(bench.id)], "target_sets": ["3"], "target_repetitions": ["10"]},
+        headers=JSON_HEADERS,
     )
     page = client.get(response.get_json()["redirect_url"]).get_data(as_text=True)
 

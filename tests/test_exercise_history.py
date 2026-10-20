@@ -342,8 +342,9 @@ def test_workout_page_loads_chart_library_and_history_script(client, session):
 
     chart_position = page.index('src="/static/vendor/chart.umd.min.js"')
     assert chart_position < page.index('src="/static/js/exercise_history.js"')
-    assert client.get("/static/vendor/chart.umd.min.js").status_code == 200
-    assert client.get("/static/js/exercise_history.js").status_code == 200
+    for script_url in ("/static/vendor/chart.umd.min.js", "/static/js/exercise_history.js"):
+        with client.get(script_url) as response:
+            assert response.status_code == 200
 
 
 def test_other_pages_do_not_load_history_scripts(client):
@@ -352,7 +353,8 @@ def test_other_pages_do_not_load_history_scripts(client):
 
 
 def test_history_script_handles_closing_loading_and_empty_states(client):
-    script = client.get("/static/js/exercise_history.js").get_data(as_text=True)
+    with client.get("/static/js/exercise_history.js") as response:
+        script = response.get_data(as_text=True)
 
     # Close: X button, click on the backdrop and Escape (native <dialog> behaviour
     # of showModal(), which fires the same "close" event).

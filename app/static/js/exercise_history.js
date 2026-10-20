@@ -72,7 +72,9 @@
     fetch(url, { headers: { Accept: "application/json" } })
       .then(function (response) {
         if (!response.ok) {
-          throw new Error("HTTP " + response.status);
+          const error = new Error("HTTP " + response.status);
+          error.status = response.status;
+          throw error;
         }
         return response.json();
       })
@@ -81,9 +83,14 @@
           renderHistory(data);
         }
       })
-      .catch(function () {
+      .catch(function (error) {
         if (request === currentRequest) {
-          showMessage("Não foi possível carregar o histórico. Tente novamente.");
+          // 404: an HTML page, without JSON; the exercise is not in the library.
+          showMessage(
+            error.status === 404
+              ? "Este exercício não foi encontrado na biblioteca."
+              : "Não foi possível carregar o histórico. Tente novamente."
+          );
         }
       });
   }

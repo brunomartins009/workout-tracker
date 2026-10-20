@@ -40,13 +40,39 @@ def create_app(test_config=None):
     # Registers mapped models in Base.metadata before creating the local schema.
     from app import models  # noqa: F401
 
-    from app.schema import upgrade_schema
+    from app.database_backup import backup_database
+    from app.schema import pending_schema_changes, upgrade_schema
 
     with app.app_context():
-        db.create_all()
-        # create_all() does not add new columns to existing tables; this adds
-        # them without touching existing rows.
-        upgrade_schema(db.engine)
+        # The upgrade changes the existing database in place, so a verified
+        # backup is made first. If it cannot be made, backup_database() raises
+        # and the application does not start; nothing is upgraded.
+        pending_changes = pending_schema_changes(db.engine)
+        backup_path = None
+        if pending_changes:
+            backup_path = backup_database(db.engine)
+            # Only schema names and the backup's file name: no data is logged.
+            app.logger.warning(
+                "Schema upgrade pending (%s). Database backed up to %s/%s before upgrading.",
+                ", ".join(pending_changes),
+                backup_path.parent.name,
+                backup_path.name,
+            )
+        try:
+            db.create_all()
+            # create_all() does not add new columns to existing tables; this adds
+            # them without touching existing rows.
+            upgrade_schema(db.engine)
+        except Exception:
+            if backup_path is not None:
+                # Never restored automatically: the backup is kept for a
+                # controlled recovery (see README).
+                app.logger.error(
+                    "Schema upgrade failed. The backup %s/%s was kept for recovery.",
+                    backup_path.parent.name,
+                    backup_path.name,
+                )
+            raise
 
     from app.exercise_library import sync_exercise_library_command
 

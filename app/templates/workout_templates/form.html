@@ -1,15 +1,33 @@
 {% extends "base.html" %}
 
-{% block title %}Novo modelo | Workout Tracker{% endblock %}
+{#
+  Template builder, used to create a template (template is None) and to edit
+  one. Nothing is saved until the form is submitted: template_builder.js keeps
+  the name, the selected exercises, their order and their targets in memory
+  and sends them, in order, to the form's action.
+#}
+{% set editing = template is not none %}
+
+{% block title %}{{ 'Editar modelo' if editing else 'Novo modelo' }} | Workout Tracker{% endblock %}
 
 {% from "partials/library_cards.html" import muscle_group_card_content, exercise_card %}
 
 {% block content %}
-  <a class="back-link" href="{{ url_for('workout_templates.list_templates') }}">← Modelos de treino</a>
+  {% if editing %}
+    <a class="back-link" href="{{ url_for('workout_templates.template_overview', template_id=template.id) }}">← {{ template.name }}</a>
+  {% else %}
+    <a class="back-link" href="{{ url_for('workouts.list_workouts', _anchor='modelos') }}">← Treinos</a>
+  {% endif %}
   <header class="page-header">
     <div>
-      <h1>Novo modelo de treino</h1>
-      <p class="page-subtitle">Dê um nome ao modelo e escolha os exercícios na ordem em que serão feitos.</p>
+      <h1>{{ 'Editar modelo de treino' if editing else 'Novo modelo de treino' }}</h1>
+      <p class="page-subtitle">
+        {% if editing %}
+          As alterações valem só para o modelo; treinos já iniciados não mudam.
+        {% else %}
+          Dê um nome ao modelo e escolha os exercícios na ordem em que serão feitos.
+        {% endif %}
+      </p>
     </div>
   </header>
 
@@ -17,16 +35,18 @@
     <p class="alert alert-error">Ative o JavaScript para montar um modelo de treino.</p>
   </noscript>
 
-  {#
-    Nothing is saved until "Criar modelo": template_builder.js keeps the
-    selection in memory and sends the name with the exercise ids, in order,
-    to POST /templates.
-  #}
-  <form id="template-builder-form" action="{{ url_for('workout_templates.create_template') }}" method="post" data-template-builder>
+  <form
+    id="template-builder-form"
+    action="{{ url_for('workout_templates.update_template', template_id=template.id) if editing else url_for('workout_templates.create_template') }}"
+    method="post"
+    data-template-builder
+    data-target-sets-max="{{ target_sets_max }}"
+    data-target-repetitions-max="{{ target_repetitions_max }}"
+  >
     <section class="panel panel-body" aria-labelledby="template-name-label">
       <div class="form-field">
         <label id="template-name-label" for="template-name">Nome do modelo</label>
-        <input id="template-name" name="name" type="text" autocomplete="off" required>
+        <input id="template-name" name="name" type="text" autocomplete="off" value="{{ template.name if editing else '' }}" required>
       </div>
     </section>
 
@@ -74,14 +94,20 @@
     <section class="section panel panel-body" aria-labelledby="selected-exercises-title">
       <h2 id="selected-exercises-title">Exercícios do modelo (<span data-selected-count>0</span>)</h2>
       <p class="muted" data-selected-empty>Nenhum exercício adicionado.</p>
+      <p class="muted builder-hint" data-selected-hint hidden>
+        Informe as séries e as repetições por série de cada exercício. Para mudar a ordem, arraste pela alça ⠿ ou use as setas do teclado nela.
+      </p>
       <ol class="selected-exercises" data-selected-list></ol>
     </section>
 
     <div class="builder-submit">
       <p class="alert alert-error" data-builder-error role="alert" hidden></p>
-      <button class="btn btn-primary" type="submit" data-builder-submit>Criar modelo</button>
+      <button class="btn btn-primary" type="submit" data-builder-submit>{{ 'Salvar alterações' if editing else 'Criar modelo' }}</button>
     </div>
   </form>
+
+  {# Current exercises and targets when editing (escaped by tojson). #}
+  <script type="application/json" id="template-builder-initial">{{ initial_items|tojson }}</script>
 
   {% set exercise_modal_add_button = true %}
   {% include "partials/exercise_modal.html" %}
@@ -90,5 +116,6 @@
 {% block scripts %}
   <script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
   <script src="{{ url_for('static', filename='js/exercise_history.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/sortable_list.js') }}"></script>
   <script src="{{ url_for('static', filename='js/template_builder.js') }}"></script>
 {% endblock %}

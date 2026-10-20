@@ -1,0 +1,20 @@
+{#
+  Sets recorded for one exercise of a session, against its target sets.
+
+  It counts recorded sets only, whatever their repetitions: it never says a
+  set reached its target. More sets than planned are shown as they are (5/4),
+  and an exercise without a target shows only the count. Rendered in the card
+  header and returned by the set routes, so workouts.js can replace it after
+  a set is added or deleted. Expects: workout_exercise.
+
+  The short visible text (2/4 séries) is hidden from screen readers, which
+  read the full sentence in the visually hidden text instead: an aria-label
+  on a span, which has no role, is not reliably read.
+#}
+{% set recorded = workout_exercise.sets|length %}
+{% set target_sets = workout_exercise.target_sets %}
+{% if target_sets is not none %}
+  <span class="progress-badge" data-progress><span aria-hidden="true">{{ recorded }}/{{ target_sets }} {{ 'série' if target_sets == 1 else 'séries' }}</span><span class="visually-hidden">{{ recorded }} {{ 'série registrada' if recorded == 1 else 'séries registradas' }} de {{ target_sets }} {{ 'planejada' if target_sets == 1 else 'planejadas' }}</span></span>
+{% else %}
+  <span class="progress-badge" data-progress><span aria-hidden="true">{{ recorded }} {{ 'série' if recorded == 1 else 'séries' }}</span><span class="visually-hidden">{{ recorded }} {{ 'série registrada' if recorded == 1 else 'séries registradas' }}, sem meta</span></span>
+{% endif %}

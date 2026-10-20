@@ -46,6 +46,12 @@
   box-sizing: border-box;
 }
 
+/* An element with the hidden attribute is never shown, whatever display its
+   class sets (e.g. the inline edit forms, which are flex containers). */
+[hidden] {
+  display: none !important;
+}
+
 body {
   margin: 0;
   background: var(--color-bg);
@@ -166,6 +172,63 @@ a:hover {
 .page-subtitle {
   margin-top: var(--space-1);
   color: var(--color-text-muted);
+}
+
+/* Name and date of a session in progress, changed in place. */
+.session-subtitle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.session-subtitle .status-badge {
+  margin-left: 0;
+}
+
+.inline-edit-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0.1rem 0.35rem;
+  margin-left: -0.35rem;
+  border: 1px dashed transparent;
+  border-radius: var(--radius-small);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.inline-edit-trigger svg {
+  flex-shrink: 0;
+  width: 1rem;
+  height: 1rem;
+  color: var(--color-text-muted);
+}
+
+.inline-edit-trigger:hover,
+.inline-edit-trigger:focus-visible {
+  border-color: var(--color-border-strong);
+  background: var(--color-surface);
+}
+
+.inline-edit-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-1) 0;
+}
+
+.inline-edit-form input[type="text"] {
+  min-width: 14rem;
+  font-size: 1.1rem;
+}
+
+.session-feedback {
+  margin: var(--space-2) 0 0;
 }
 
 /* Session status next to the workout date. */
@@ -315,29 +378,6 @@ a:hover {
   min-width: 2rem;
   padding-left: var(--space-2);
   padding-right: var(--space-2);
-}
-
-/* Low-emphasis text actions, used inside dense rows such as the sets table. */
-.btn-text {
-  padding: var(--space-1) var(--space-2);
-  border: 0;
-  border-radius: var(--radius-small);
-  background: none;
-  color: var(--color-text-muted);
-  font: inherit;
-  font-size: 0.875rem;
-  text-decoration: none;
-  cursor: pointer;
-}
-
-.btn-text:hover {
-  background: var(--color-surface-muted);
-  color: var(--color-text);
-}
-
-.btn-text-danger:hover {
-  background: var(--color-danger-soft);
-  color: var(--color-danger);
 }
 
 .actions {
@@ -503,17 +543,6 @@ select:focus-visible {
   flex-wrap: nowrap;
 }
 
-.primary-link {
-  color: var(--color-text);
-  font-weight: 600;
-  text-decoration: none;
-}
-
-.primary-link:hover {
-  color: var(--color-accent);
-  text-decoration: underline;
-}
-
 /* ---------- Workout detail ---------- */
 
 .stats {
@@ -562,6 +591,15 @@ select:focus-visible {
   padding: var(--space-2) var(--space-5) var(--space-2) var(--space-2);
 }
 
+/* Drag handle (when the exercises can be reordered) and the title. */
+.exercise-card-main {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
 .exercise-card-title {
   flex: 1;
   min-width: 0;
@@ -602,6 +640,40 @@ select:focus-visible {
   color: var(--color-text-muted);
   font-size: 0.85rem;
   font-weight: 400;
+}
+
+.exercise-toggle-target {
+  color: var(--color-text);
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+/* Recorded sets against the target (2/4). Neutral on purpose: a recorded set
+   is not necessarily a set that reached its target. */
+.progress-badge {
+  flex-shrink: 0;
+  margin-left: auto;
+  padding: 0.15rem 0.6rem;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 999px;
+  background: var(--color-surface-muted);
+  color: var(--color-text);
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.progress-badge + .exercise-toggle-icon {
+  margin-left: var(--space-2);
+}
+
+.label-hint {
+  color: var(--color-text-muted);
+  font-weight: 400;
+}
+
+.set-target {
+  color: var(--color-text-muted);
 }
 
 .exercise-toggle-icon {
@@ -950,26 +1022,54 @@ a.library-card .library-card-title {
 
 /* ---------- Workout templates ---------- */
 
-.template-card {
+.section-intro {
+  margin-bottom: var(--space-3);
+}
+
+/* Template overview */
+
+.template-overview-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Position | name and muscles | targets; on small screens the targets go
+   below the name (see the media query). */
+.template-overview-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-small);
+}
+
+.template-overview-text {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
-  padding: var(--space-4) var(--space-5);
+  min-width: 0;
 }
 
-.template-card-title {
-  font-size: 1.1rem;
+.template-overview-name {
+  font-weight: 600;
 }
 
-.template-exercises {
-  flex-grow: 1;
-  margin: 0;
-  padding-left: 1.25rem;
-  font-size: 0.95rem;
+.template-overview-muscles {
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
 }
 
-.template-card-actions {
-  margin-top: var(--space-2);
+.target-summary {
+  white-space: nowrap;
+}
+
+.target-summary-missing {
+  color: var(--color-text-muted);
+  font-style: italic;
 }
 
 /* Template builder */
@@ -1021,11 +1121,76 @@ a.library-card .library-card-title {
 
 .selected-exercise {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-small);
+  background: var(--color-surface);
+}
+
+.selected-exercise-targets {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.target-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.target-field-label {
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.target-field input {
+  width: 4.5rem;
+}
+
+/* Drag-and-drop reordering (sortable_list.js). Only the handle starts a drag;
+   touch-action: none lets a finger drag it instead of scrolling the page. */
+.drag-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2.5rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-small);
+  background: transparent;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.drag-handle:hover,
+.drag-handle:focus-visible {
+  border-color: var(--color-border-strong);
+  color: var(--color-text);
+}
+
+.is-sorting,
+.is-sorting * {
+  cursor: grabbing;
+  user-select: none;
+}
+
+/* The dragged item sits where it would be dropped: this is the indicator. */
+.is-dragging {
+  position: relative;
+  z-index: 1;
+  border: 2px dashed var(--color-accent);
+  background: var(--color-accent-soft);
+  box-shadow: 0 6px 16px rgba(16, 24, 40, 0.18);
 }
 
 .selected-exercise-text {
@@ -1150,6 +1315,46 @@ body.modal-open {
 /* ---------- Small screens ---------- */
 
 @media (max-width: 640px) {
+  .template-overview-item {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .template-overview-item .target-summary {
+    grid-column: 2;
+    white-space: normal;
+  }
+
+  /* The exercise name gets the whole width; the progress goes below it. */
+  .exercise-toggle {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    column-gap: var(--space-2);
+    row-gap: var(--space-1);
+  }
+
+  .exercise-toggle .progress-badge {
+    grid-column: 2;
+    grid-row: 2;
+    justify-self: start;
+    margin-left: 0;
+  }
+
+  .exercise-toggle .exercise-toggle-icon {
+    grid-column: 3;
+    grid-row: 1 / span 2;
+    margin-left: 0;
+  }
+
+  /* "Iniciar treino" first and full width when the header stacks. */
+  .overview-start {
+    order: -1;
+    flex-basis: 100%;
+  }
+
+  .overview-start .btn {
+    width: 100%;
+  }
+
   .site-header-inner {
     flex-wrap: wrap;
     gap: var(--space-2);

@@ -2,21 +2,65 @@
 
 {% block title %}{{ workout.name }} | Workout Tracker{% endblock %}
 
+{% from "partials/icons.html" import edit_icon %}
+
 {% block content %}
   {# A completed session is read-only: only the history and deletion remain. #}
   {% set editable = not workout.is_completed %}
   <a class="back-link" href="{{ url_for('workouts.list_workouts') }}">← Treinos</a>
   <header class="page-header">
-    <div>
-      <h1>{{ workout.name }}</h1>
-      <p class="page-subtitle">
-        <time datetime="{{ workout.date.isoformat() }}">{{ workout.date.strftime('%d/%m/%Y') }}</time>
+    <div class="session-heading">
+      {% if editable %}
+        {#
+          The name and the date of a session in progress are changed in place:
+          clicking them shows a small form, sent with fetch() by workouts.js
+          (only that field is sent). Only this session changes, never its
+          template or other sessions.
+          The action is described by hidden text after the value, not by an
+          aria-label, which would replace the name (and the date) read by
+          screen readers in the button and in the heading.
+        #}
+        <h1>
+          <button class="inline-edit-trigger" type="button" data-inline-edit-open="session-name-form">
+            <span data-session-name>{{ workout.name }}</span>
+            <span class="visually-hidden">(alterar o nome)</span>
+            {{ edit_icon() }}
+          </button>
+        </h1>
+        <form class="inline-edit-form" id="session-name-form" action="{{ url_for('workouts.update_workout', workout_id=workout.id) }}" method="post" data-inline-edit hidden>
+          <label class="visually-hidden" for="session-name-input">Nome do treino</label>
+          <input id="session-name-input" name="name" type="text" value="{{ workout.name }}" autocomplete="off" required>
+          <button class="btn btn-primary btn-small" type="submit">Salvar</button>
+          <button class="btn btn-secondary btn-small" type="button" data-inline-edit-cancel>Cancelar</button>
+        </form>
+      {% else %}
+        <h1>{{ workout.name }}</h1>
+      {% endif %}
+      <div class="page-subtitle session-subtitle">
         {% if editable %}
+          <button class="inline-edit-trigger inline-edit-trigger-small" type="button" data-inline-edit-open="session-date-form">
+            <time datetime="{{ workout.date.isoformat() }}" data-session-date>{{ workout.date.strftime('%d/%m/%Y') }}</time>
+            <span class="visually-hidden">(alterar a data)</span>
+            {{ edit_icon() }}
+          </button>
+          <form class="inline-edit-form" id="session-date-form" action="{{ url_for('workouts.update_workout', workout_id=workout.id) }}" method="post" data-inline-edit hidden>
+            <label class="visually-hidden" for="session-date-input">Data do treino</label>
+            <input id="session-date-input" name="date" type="date" value="{{ workout.date.isoformat() }}" required>
+            <button class="btn btn-primary btn-small" type="submit">Salvar</button>
+            <button class="btn btn-secondary btn-small" type="button" data-inline-edit-cancel>Cancelar</button>
+          </form>
           <span class="status-badge status-badge-in-progress">Em andamento</span>
         {% else %}
+          <time datetime="{{ workout.date.isoformat() }}">{{ workout.date.strftime('%d/%m/%Y') }}</time>
           <span class="status-badge status-badge-completed">Concluído</span>
         {% endif %}
-      </p>
+      </div>
+      {% if editable %}
+        <p class="set-feedback session-feedback" data-session-feedback role="status" aria-live="polite"></p>
+        <noscript>
+          <p><a href="{{ url_for('workouts.edit_workout', workout_id=workout.id) }}">Alterar nome e data</a></p>
+        </noscript>
+      {% endif %}
     </div>
     <div class="actions">
       {% if editable %}
@@ -24,7 +68,6 @@
         <form class="inline-form" action="{{ url_for('workouts.complete_workout', workout_id=workout.id) }}" method="post" data-confirm-dialog="complete-workout-dialog">
           <button class="btn btn-primary" type="submit">Concluir treino</button>
         </form>
-        <a class="btn btn-secondary" href="{{ url_for('workouts.edit_workout', workout_id=workout.id) }}">Editar treino</a>
       {% endif %}
       <form class="inline-form" action="{{ url_for('workouts.delete_workout', workout_id=workout.id) }}" method="post" data-confirm-dialog="delete-workout-dialog">
         <button class="btn btn-danger" type="submit">Excluir treino</button>
@@ -53,9 +96,6 @@
   <section class="section" aria-labelledby="exercises-title">
     <div class="section-header">
       <h2 id="exercises-title">Exercícios</h2>
-      {% if editable %}
-        <a href="#add-exercise">+ Adicionar exercício</a>
-      {% endif %}
     </div>
 
     {# Success/error messages of exercise changes made with fetch(). #}
@@ -134,7 +174,7 @@
         <button class="modal-close" type="button" data-confirm-close aria-label="Fechar">×</button>
       </header>
       <div class="modal-body">
-        <p>O treino “{{ workout.name }}” e todas as suas séries serão excluídos. Os exercícios da biblioteca não são afetados.</p>
+        <p>O treino “<span data-session-name>{{ workout.name }}</span>” e todas as suas séries serão excluídos. Os exercícios da biblioteca não são afetados.</p>
         <div class="form-actions">
           <button class="btn btn-danger" type="button" data-confirm-accept>Excluir treino</button>
           <button class="btn btn-secondary" type="button" data-confirm-close>Cancelar</button>
@@ -149,5 +189,6 @@
 {% block scripts %}
   <script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
   <script src="{{ url_for('static', filename='js/exercise_history.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/sortable_list.js') }}"></script>
   <script src="{{ url_for('static', filename='js/workouts.js') }}"></script>
 {% endblock %}

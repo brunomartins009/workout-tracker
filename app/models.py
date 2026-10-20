@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 
-from sqlalchemy import CheckConstraint, Date, DateTime, ForeignKey, Index, Integer, Numeric, String, UniqueConstraint, func
+from sqlalchemy import CheckConstraint, Date, DateTime, ForeignKey, Index, Integer, Numeric, String, UniqueConstraint, event, func, inspect
 from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from app.database import Base
@@ -21,6 +21,27 @@ SQLITE_MAX_INTEGER = 2**63 - 1
 # the declared precision, so larger values would be stored inexactly (or as
 # infinity) instead of being rejected.
 MAX_WEIGHT_KG = Decimal("999999.99")
+
+# Targets of an exercise in a template or a session: planned sets, and planned
+# repetitions per set. Both are optional (NULL), so templates and sessions
+# created before targets existed keep working without invented values, but
+# they go together: both set or both NULL (targets_are_paired).
+TARGET_SETS_MAX = 20
+TARGET_REPETITIONS_MAX = 100
+
+
+def targets_are_paired(target_sets: int | None, target_repetitions: int | None) -> bool:
+    """Targets are set together (sets and repetitions per set) or not at all."""
+    return (target_sets is None) == (target_repetitions is None)
+
+
+def target_range_check(column_name: str, maximum: int) -> str:
+    """SQL of the CHECK that keeps a target in range (NULL means no target).
+
+    Shared by the models and by app.schema, so a new database and an upgraded
+    one get the same rule.
+    """
+    return f"{column_name} BETWEEN 1 AND {maximum}"
 
 
 def utc_now() -> datetime:
@@ -97,6 +118,22 @@ class WorkoutTemplateExercise(TimestampMixin, Base):
     # Library exercises used by a template cannot be deleted, like those used by sessions.
     exercise_id: Mapped[int] = mapped_column(ForeignKey("exercises.id", ondelete="RESTRICT"), nullable=False, index=True)
     position: Mapped[int] = mapped_column(Integer, nullable=False)
+    target_sets: Mapped[int | None] = mapped_column(
+        Integer,
+        CheckConstraint(
+            target_range_check("target_sets", TARGET_SETS_MAX),
+            name="ck_workout_template_exercise_target_sets_range",
+        ),
+        nullable=True,
+    )
+    target_repetitions: Mapped[int | None] = mapped_column(
+        Integer,
+        CheckConstraint(
+            target_range_check("target_repetitions", TARGET_REPETITIONS_MAX),
+            name="ck_workout_template_exercise_target_repetitions_range",
+        ),
+        nullable=True,
+    )
 
     template: Mapped[WorkoutTemplate] = relationship(back_populates="template_exercises")
     exercise: Mapped[Exercise] = relationship()
@@ -104,6 +141,10 @@ class WorkoutTemplateExercise(TimestampMixin, Base):
     @validates("position")
     def validate_position(self, _key: str, value: int) -> int:
         return _validate_positive_integer(value, "position")
+
+    @validates("target_sets", "target_repetitions")
+    def validate_targets(self, key: str, value: int | None) -> int | None:
+        return _validate_target(value, key)
 
 
 class Exercise(TimestampMixin, Base):
@@ -139,6 +180,24 @@ class WorkoutExercise(TimestampMixin, Base):
     workout_id: Mapped[int] = mapped_column(ForeignKey("workouts.id", ondelete="CASCADE"), nullable=False, index=True)
     exercise_id: Mapped[int] = mapped_column(ForeignKey("exercises.id", ondelete="RESTRICT"), nullable=False, index=True)
     position: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Copied from the template when the session starts; never linked to it.
+    # NULL for exercises added to the session by hand and for older sessions.
+    target_sets: Mapped[int | None] = mapped_column(
+        Integer,
+        CheckConstraint(
+            target_range_check("target_sets", TARGET_SETS_MAX),
+            name="ck_workout_exercise_target_sets_range",
+        ),
+        nullable=True,
+    )
+    target_repetitions: Mapped[int | None] = mapped_column(
+        Integer,
+        CheckConstraint(
+            target_range_check("target_repetitions", TARGET_REPETITIONS_MAX),
+            name="ck_workout_exercise_target_repetitions_range",
+        ),
+        nullable=True,
+    )
 
     workout: Mapped[Workout] = relationship(back_populates="workout_exercises")
     exercise: Mapped[Exercise] = relationship(back_populates="workout_exercises")
@@ -147,6 +206,10 @@ class WorkoutExercise(TimestampMixin, Base):
     @validates("position")
     def validate_position(self, _key: str, value: int) -> int:
         return _validate_positive_integer(value, "position")
+
+    @validates("target_sets", "target_repetitions")
+    def validate_targets(self, key: str, value: int | None) -> int | None:
+        return _validate_target(value, key)
 
 
 class WorkoutSet(TimestampMixin, Base):
@@ -195,9 +258,45 @@ def _validate_required_name(value: str, field_name: str = "name") -> str:
     return normalized_value
 
 
+TARGET_MAXIMUMS = {"target_sets": TARGET_SETS_MAX, "target_repetitions": TARGET_REPETITIONS_MAX}
+
+
+def _validate_target(value: int | None, field_name: str) -> int | None:
+    """A target is optional; when present it is a whole number within its range."""
+    if value is None:
+        return None
+    maximum = TARGET_MAXIMUMS[field_name]
+    if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= maximum:
+        raise ValueError(f"{field_name} must be a whole number from 1 to {maximum}")
+    return value
+
+
 def _validate_positive_integer(value: int, field_name: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
         raise ValueError(f"{field_name} must be a positive integer")
     if value > SQLITE_MAX_INTEGER:
         raise ValueError(f"{field_name} is too large")
     return value
+
+
+# The pair of targets is checked when the row is written, not in @validates:
+# the two attributes are assigned one at a time, so a validator of one of them
+# would still see the other one unset.
+
+
+def _validate_target_pair(_mapper, _connection, item) -> None:
+    if not targets_are_paired(item.target_sets, item.target_repetitions):
+        raise ValueError("target_sets and target_repetitions must be set together")
+
+
+def _validate_changed_target_pair(mapper, connection, item) -> None:
+    # Only when a target changes: other updates (such as a new position when a
+    # session is reordered) keep working on rows written before this rule.
+    attributes = inspect(item).attrs
+    if attributes.target_sets.history.has_changes() or attributes.target_repetitions.history.has_changes():
+        _validate_target_pair(mapper, connection, item)
+
+
+for _model_with_targets in (WorkoutTemplateExercise, WorkoutExercise):
+    event.listen(_model_with_targets, "before_insert", _validate_target_pair)
+    event.listen(_model_with_targets, "before_update", _validate_changed_target_pair)

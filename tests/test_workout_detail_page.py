@@ -35,7 +35,8 @@ def add_exercise(session, workout, name, position, sets=()):
 
 
 def exercise_card(page, workout_exercise):
-    start = page.index(f'<li class="panel exercise-card" id="exercise-{workout_exercise.id}">')
+    # The card's <li> also carries data attributes (id and saved position).
+    start = page.index(f'<li class="panel exercise-card" id="exercise-{workout_exercise.id}"')
     return page[start:page.index("</li>", page.index('data-sets', start))]
 
 
@@ -97,15 +98,17 @@ def test_exercise_actions_stay_visible_and_outside_the_toggle(client, session):
     add_exercise(session, workout, "Crucifixo", 2)
 
     header = card_header(exercise_card(client.get(f"/workouts/{workout.id}").get_data(as_text=True), first))
-    toggle = header.split("<button")[1].split("</button>")[0]
+    toggle = header.split('class="exercise-toggle"')[1].split("</button>")[0]
     actions = header.split('<div class="actions">')[1]
 
-    # Histórico, Mover and Remover are in the always-visible header, as siblings
-    # of the toggle button, so clicking them does not expand/collapse the card.
+    # The drag handle, Histórico and Remover are in the always-visible header,
+    # as siblings of the toggle button, so using them does not expand/collapse
+    # the card.
     assert "data-exercise-toggle" in toggle
     assert "Histórico" not in toggle
+    assert "data-drag-handle" not in toggle
+    assert "data-drag-handle" in header.split('class="exercise-toggle"')[0]
     assert "data-history-url" in actions
-    assert "/move-down" in actions
     assert "/delete" in actions
     assert "Remover" in actions
 
@@ -136,7 +139,8 @@ def test_adding_an_exercise_redirects_to_it(client, session):
 
 
 def test_workout_script_toggles_exercises_and_opens_the_exercise_in_the_url(client):
-    script = client.get("/static/js/workouts.js").get_data(as_text=True)
+    with client.get("/static/js/workouts.js") as response:
+        script = response.get_data(as_text=True)
 
     assert "[data-exercise-toggle]" in script
     assert 'toggle.setAttribute("aria-expanded", String(expanded))' in script
@@ -317,7 +321,8 @@ def test_set_routes_without_json_keep_redirecting(client, session):
 
 
 def test_set_script_uses_fetch_safely_and_prevents_duplicate_submissions(client):
-    script = client.get("/static/js/workouts.js").get_data(as_text=True)
+    with client.get("/static/js/workouts.js") as response:
+        script = response.get_data(as_text=True)
 
     assert 'headers: { Accept: "application/json" }' in script
     assert "new FormData(form)" in script
@@ -339,7 +344,8 @@ def test_workout_page_can_delete_the_workout(client, session):
     page = client.get(f"/workouts/{workout.id}").get_data(as_text=True)
     header = page.split('<header class="page-header">')[1].split("</header>")[0]
 
-    assert f'href="/workouts/{workout.id}/edit">Editar treino</a>' in header
+    # The name and the date are changed in place; there is no "Editar treino" button.
+    assert "Editar treino" not in header
     assert f'action="/workouts/{workout.id}/delete" method="post"' in header
     assert ">Excluir treino</button>" in header
 
@@ -347,7 +353,7 @@ def test_workout_page_can_delete_the_workout(client, session):
 def test_workout_pages_link_back_to_calendar(client, session):
     workout = create_workout(session)
 
-    for url in (f"/workouts/{workout.id}", f"/workouts/{workout.id}/edit", "/templates"):
+    for url in (f"/workouts/{workout.id}", f"/workouts/{workout.id}/edit"):
         assert '<a class="back-link" href="/workouts">← Treinos</a>' in client.get(url).get_data(as_text=True)
 
 

@@ -37,34 +37,42 @@ def exercises(session):
     return [create_exercise(session, name) for name in ("Supino", "Crucifixo", "Elevação lateral")]
 
 
-# List
+# Listing: cards below the calendar (the old /templates page redirects there)
 
 
-def test_list_shows_empty_state(client):
+def test_old_templates_address_leads_to_the_cards_below_the_calendar(client):
     response = client.get("/templates")
 
-    assert response.status_code == 200
-    assert "Nenhum modelo de treino criado." in response.get_data(as_text=True)
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/workouts#modelos")
 
 
-def test_list_shows_templates_by_name_with_exercises_in_order(client, session, exercises):
+def test_cards_show_empty_state(client):
+    page = client.get("/workouts").get_data(as_text=True)
+
+    assert "Nenhum modelo de treino criado." in page
+
+
+def test_cards_list_templates_by_name_and_overview_lists_exercises_in_order(client, session, exercises):
     bench, fly, raise_ = exercises
-    create_template(session, "upper", [fly])
-    create_template(session, "Push", [raise_, bench, fly])
+    upper = create_template(session, "upper", [fly])
+    push = create_template(session, "Push", [raise_, bench, fly])
 
-    page = client.get("/templates").get_data(as_text=True)
+    page = client.get("/workouts").get_data(as_text=True)
 
-    assert page.index("Push") < page.index("upper")
-    push_card = page[page.index("Push"):page.index("upper")]
-    assert push_card.index("Elevação lateral") < push_card.index("Supino") < push_card.index("Crucifixo")
+    cards = page[page.index('id="modelos"'):]
+    assert cards.index(f'href="/templates/{push.id}"') < cards.index(f'href="/templates/{upper.id}"')
+    push_card = cards[cards.index(f'href="/templates/{push.id}"'):cards.index(f'href="/templates/{upper.id}"')]
     assert "3 exercícios" in push_card
-    assert "1 exercício<" in page
+    assert "1 exercício<" in cards
+    overview = client.get(f"/templates/{push.id}").get_data(as_text=True)
+    assert overview.index("Elevação lateral") < overview.index("Supino") < overview.index("Crucifixo")
 
 
-def test_list_offers_start_and_delete_with_confirmation(client, session, exercises):
+def test_overview_offers_start_and_delete_with_confirmation(client, session, exercises):
     template = create_template(session, "Push", exercises[:1])
 
-    page = client.get("/templates").get_data(as_text=True)
+    page = client.get(f"/templates/{template.id}").get_data(as_text=True)
 
     assert f'action="/templates/{template.id}/start"' in page
     assert f'action="/templates/{template.id}/delete"' in page
@@ -72,13 +80,13 @@ def test_list_offers_start_and_delete_with_confirmation(client, session, exercis
     assert 'id="delete-template-dialog"' in page
 
 
-def test_list_escapes_template_names(client, session, exercises):
-    create_template(session, "Push <script>alert(1)</script>", exercises[:1])
+def test_cards_and_overview_escape_template_names(client, session, exercises):
+    template = create_template(session, "Push <script>alert(1)</script>", exercises[:1])
 
-    page = client.get("/templates").get_data(as_text=True)
-
-    assert "<script>alert(1)</script>" not in page
-    assert "Push &lt;script&gt;alert(1)&lt;/script&gt;" in page
+    for url in ("/workouts", f"/templates/{template.id}"):
+        page = client.get(url).get_data(as_text=True)
+        assert "<script>alert(1)</script>" not in page
+        assert "Push &lt;script&gt;alert(1)&lt;/script&gt;" in page
 
 
 # Create
@@ -89,12 +97,17 @@ def test_creates_template_with_exercises_in_the_sent_order(client, session, exer
 
     response = client.post(
         "/templates",
-        data={"name": "  Push  ", "exercise_ids": [str(raise_.id), str(bench.id), str(fly.id)]},
+        data={
+            "name": "  Push  ",
+            "exercise_ids": [str(raise_.id), str(bench.id), str(fly.id)],
+            "target_sets": ["3", "4", "3"],
+            "target_repetitions": ["15", "10", "12"],
+        },
     )
 
-    assert response.status_code == 302
-    assert response.headers["Location"].endswith("/templates")
     template = session.query(WorkoutTemplate).one()
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith(f"/templates/{template.id}")
     assert template.name == "Push"
     assert template_items(session, template.id) == [
         ("Elevação lateral", 1),
@@ -106,13 +119,13 @@ def test_creates_template_with_exercises_in_the_sent_order(client, session, exer
 def test_create_answers_json_for_fetch(client, session, exercises):
     response = client.post(
         "/templates",
-        data={"name": "Push", "exercise_ids": [str(exercises[0].id)]},
+        data={"name": "Push", "exercise_ids": [str(exercises[0].id)], "target_sets": ["4"], "target_repetitions": ["10"]},
         headers=JSON_HEADERS,
     )
 
+    template = session.query(WorkoutTemplate).one()
     assert response.status_code == 201
-    assert response.get_json() == {"message": "Modelo criado com sucesso.", "redirect_url": "/templates"}
-    assert session.query(WorkoutTemplate).count() == 1
+    assert response.get_json() == {"message": "Modelo criado com sucesso.", "redirect_url": f"/templates/{template.id}"}
 
 
 @pytest.mark.parametrize(
@@ -151,7 +164,7 @@ def test_create_rejects_duplicate_name_ignoring_case_and_spaces(client, session,
 
     response = client.post(
         "/templates",
-        data={"name": duplicate_name, "exercise_ids": [str(exercises[1].id)]},
+        data={"name": duplicate_name, "exercise_ids": [str(exercises[1].id)], "target_sets": ["3"], "target_repetitions": ["10"]},
         headers=JSON_HEADERS,
     )
 
@@ -171,7 +184,7 @@ def test_deletes_template_without_touching_sessions_or_exercises(client, session
 
     response = client.post(f"/templates/{template.id}/delete", follow_redirects=True)
 
-    assert response.request.path == "/templates"
+    assert response.request.path == "/workouts"
     assert "Modelo excluído com sucesso." in response.get_data(as_text=True)
     session.expire_all()
     assert session.get(WorkoutTemplate, template.id) is None
@@ -251,8 +264,10 @@ def test_starting_nonexistent_template_returns_404(client, session):
     assert session.query(Workout).count() == 0
 
 
-def test_templates_page_is_part_of_the_workouts_area(client):
-    page = client.get("/templates").get_data(as_text=True)
+def test_overview_is_part_of_the_workouts_area(client, session, exercises):
+    template = create_template(session, "Push", exercises[:1])
+
+    page = client.get(f"/templates/{template.id}").get_data(as_text=True)
 
     assert '<a href="/workouts" aria-current="page">Treinos</a>' in page
 
@@ -276,7 +291,9 @@ def test_other_constraint_failure_is_not_reported_as_duplicate_name(client, sess
     event.listen(WorkoutTemplate, "before_insert", failure)
     try:
         response = client.post(
-            "/templates", data={"name": "Push", "exercise_ids": [str(exercises[0].id)]}, headers=JSON_HEADERS
+            "/templates",
+            data={"name": "Push", "exercise_ids": [str(exercises[0].id)], "target_sets": ["3"], "target_repetitions": ["10"]},
+            headers=JSON_HEADERS,
         )
     finally:
         event.remove(WorkoutTemplate, "before_insert", failure)
@@ -306,7 +323,9 @@ def test_name_saved_by_another_request_meanwhile_is_reported_as_duplicate(client
     event.listen(WorkoutTemplate, "before_insert", save_same_name_first)
     try:
         response = client.post(
-            "/templates", data={"name": "Push", "exercise_ids": [str(exercises[0].id)]}, headers=JSON_HEADERS
+            "/templates",
+            data={"name": "Push", "exercise_ids": [str(exercises[0].id)], "target_sets": ["3"], "target_repetitions": ["10"]},
+            headers=JSON_HEADERS,
         )
     finally:
         event.remove(WorkoutTemplate, "before_insert", save_same_name_first)
@@ -319,8 +338,9 @@ def test_name_saved_by_another_request_meanwhile_is_reported_as_duplicate(client
 def test_start_form_is_sent_only_once(client, session, exercises):
     template = create_template(session, "Push", exercises[:1])
 
-    page = client.get("/templates").get_data(as_text=True)
-    script = client.get("/static/js/workouts.js").get_data(as_text=True)
+    page = client.get(f"/templates/{template.id}").get_data(as_text=True)
+    with client.get("/static/js/workouts.js") as response:
+        script = response.get_data(as_text=True)
 
     assert f'action="/templates/{template.id}/start" method="post" data-submit-once>' in page
     assert 'event.target.closest("form[data-submit-once]")' in script

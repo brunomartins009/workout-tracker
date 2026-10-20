@@ -81,13 +81,15 @@ def workout(session):
     fly = create_exercise(session, "Crucifixo")
     row = create_exercise(session, "Remada")
     bench_item = add_exercise(session, workout, bench, 1, sets=[(10, "20"), (8, "22.5")])
-    add_exercise(session, workout, fly, 2, sets=[(12, "10")])
+    fly_item = add_exercise(session, workout, fly, 2, sets=[(12, "10")])
     return {
         "workout_id": workout.id,
         "bench_id": bench.id,
         "fly_id": fly.id,
         "row_id": row.id,
         "set_id": bench_item.sets[0].id,
+        "bench_item_id": bench_item.id,
+        "fly_item_id": fly_item.id,
     }
 
 
@@ -95,12 +97,19 @@ MUTATIONS = {
     "edit name and date": ("/workouts/{workout_id}/edit", {"date": "2026-10-20", "name": "Outro nome"}),
     "add exercise": ("/workouts/{workout_id}/exercises", {"exercise_id": "{row_id}"}),
     "remove exercise": ("/workouts/{workout_id}/exercises/{bench_id}/delete", {}),
-    "move exercise up": ("/workouts/{workout_id}/exercises/{fly_id}/move-up", {}),
-    "move exercise down": ("/workouts/{workout_id}/exercises/{bench_id}/move-down", {}),
+    "reorder exercises": ("/workouts/{workout_id}/exercises/reorder", {"workout_exercise_ids": ["{fly_item_id}", "{bench_item_id}"]}),
     "add set": ("/workouts/{workout_id}/exercises/{bench_id}/sets", {"repetitions": "5", "weight_kg": "30"}),
     "edit set": ("/workouts/{workout_id}/exercises/{bench_id}/sets/{set_id}/edit", {"repetitions": "1", "weight_kg": "99"}),
     "delete set": ("/workouts/{workout_id}/exercises/{bench_id}/sets/{set_id}/delete", {}),
 }
+
+
+def fill_form(data, values):
+    """Form data with {placeholders} replaced; a list sends several values."""
+    return {
+        key: [item.format(**values) for item in value] if isinstance(value, list) else value.format(**values)
+        for key, value in data.items()
+    }
 
 
 def request_elsewhere_after_the_check(app, monkeypatch, url):
@@ -138,7 +147,7 @@ def test_change_is_refused_when_session_is_completed_after_the_check(app, client
 
     response = client.post(
         url.format(**workout),
-        data={key: value.format(**workout) for key, value in data.items()},
+        data=fill_form(data, workout),
         headers=JSON_HEADERS,
     )
 
@@ -252,7 +261,7 @@ def test_change_to_a_session_deleted_after_the_check_is_not_found(app, client, s
 
     response = client.post(
         url.format(**workout),
-        data={key: value.format(**workout) for key, value in data.items()},
+        data=fill_form(data, workout),
         headers=JSON_HEADERS,
     )
 

@@ -15,6 +15,8 @@ env/
 instance/*.db
 instance/*.sqlite
 instance/*.sqlite3
+# Automatic backups made before schema upgrades (real data)
+instance/backups/
 
 # IDEs and editors
 .vscode/

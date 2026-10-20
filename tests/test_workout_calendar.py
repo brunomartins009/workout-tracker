@@ -32,6 +32,23 @@ def day_template(page, iso_date):
     return match.group(1) if match else None
 
 
+def calendar_rows(page):
+    """The <tr> contents of the calendar body, one per week."""
+    body = page.split("<tbody>")[1].split("</tbody>")[0]
+    return [row.split("</tr>")[0] for row in body.split("<tr>")[1:]]
+
+
+def day_numbers(row):
+    return re.findall(r">(\d+)</span>", row)
+
+
+def weekday_column(page, iso_date):
+    """Column (0 = first column) of the highlighted day with this date."""
+    row = next(row for row in calendar_rows(page) if f'data-date="{iso_date}"' in row)
+    cells = row.split("<td>")[1:]
+    return next(index for index, cell in enumerate(cells) if f'data-date="{iso_date}"' in cell)
+
+
 def highlighted_dates(page):
     return re.findall(r'class="calendar-day calendar-day-workout"[^>]*data-date="([^"]+)"', page)
 
@@ -43,10 +60,11 @@ def test_workouts_page_shows_calendar_and_template_actions(client):
     page = get_calendar(client, "2026-10")
 
     assert "<h1>Treinos</h1>" in page
-    assert 'href="/templates/new">Novo treino</a>' in page
-    assert 'href="/templates">Iniciar treino</a>' in page
+    assert 'href="/templates/new">Novo modelo</a>' in page
+    # The template cards come after the calendar.
+    assert page.index('id="calendar-title"') < page.index('id="modelos"')
     assert 'href="/workouts/new"' not in page
-    assert re.findall(r"<th scope=\"col\">([^<]+)</th>", page) == ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]
+    assert re.findall(r"<th scope=\"col\">([^<]+)</th>", page) == ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"]
     assert '<h2 id="calendar-title">Outubro 2026</h2>' in page
 
 
@@ -69,14 +87,66 @@ def test_calendar_opens_on_current_month(client):
     assert "Ir para o mês atual" not in page
 
 
-def test_calendar_grid_starts_on_monday_and_completes_weeks_with_adjacent_days(client):
-    page = get_calendar(client, "2026-10")
-    first_row = page.split("<tbody>")[1].split("</tr>")[0]
+def test_calendar_grid_starts_on_sunday_and_completes_weeks_with_adjacent_days(client):
+    rows = calendar_rows(get_calendar(client, "2026-10"))
 
-    # October 2026 starts on a Thursday: Monday 28/09 to Sunday 04/10.
-    assert re.findall(r">(\d+)</span>", first_row) == ["28", "29", "30", "1", "2", "3", "4"]
-    assert first_row.count("calendar-day-outside") == 3
-    assert page.split("<tbody>")[1].count("<tr>") == 5
+    # October 2026 starts on a Thursday: Sunday 27/09 to Saturday 03/10.
+    assert day_numbers(rows[0]) == ["27", "28", "29", "30", "1", "2", "3"]
+    assert rows[0].count("calendar-day-outside") == 4
+    # And ends on a Saturday: the last week has no days of November.
+    assert day_numbers(rows[-1]) == ["25", "26", "27", "28", "29", "30", "31"]
+    assert "calendar-day-outside" not in rows[-1]
+    assert len(rows) == 5
+
+
+def test_month_from_sunday_to_saturday_has_only_its_own_days(client):
+    # February 2026 starts on a Sunday and ends on a Saturday.
+    rows = calendar_rows(get_calendar(client, "2026-02"))
+
+    assert len(rows) == 4
+    assert day_numbers(rows[0]) == ["1", "2", "3", "4", "5", "6", "7"]
+    assert day_numbers(rows[-1]) == ["22", "23", "24", "25", "26", "27", "28"]
+    assert not any("calendar-day-outside" in row for row in rows)
+
+
+def test_month_starting_on_saturday_takes_six_weeks(client):
+    # August 2026 starts on a Saturday: only the 1st fits in the first week.
+    rows = calendar_rows(get_calendar(client, "2026-08"))
+
+    assert len(rows) == 6
+    assert day_numbers(rows[0]) == ["26", "27", "28", "29", "30", "31", "1"]
+    assert rows[0].count("calendar-day-outside") == 6
+    assert day_numbers(rows[-1]) == ["30", "31", "1", "2", "3", "4", "5"]
+
+
+def test_weeks_cross_year_boundaries(client):
+    january = calendar_rows(get_calendar(client, "2026-01"))
+    december = calendar_rows(get_calendar(client, "2026-12"))
+
+    # January 2026 starts on a Thursday: Sunday 28/12/2025 to Saturday 03/01.
+    assert day_numbers(january[0]) == ["28", "29", "30", "31", "1", "2", "3"]
+    assert january[0].count("calendar-day-outside") == 4
+    # December 2026 ends on a Thursday: Sunday 27/12 to Saturday 02/01/2027.
+    assert day_numbers(december[-1]) == ["27", "28", "29", "30", "31", "1", "2"]
+    assert december[-1].count("calendar-day-outside") == 2
+
+
+def test_workouts_stay_on_their_dates_and_weekday_columns(client, session):
+    # Sunday, Saturday and a Thursday at the end of the year.
+    for workout_date in (date(2026, 10, 4), date(2026, 10, 3), date(2026, 12, 31)):
+        create_workout(session, workout_date)
+    # Days of the adjacent month that appear in the grid show no workouts.
+    create_workout(session, date(2027, 1, 2))
+
+    october = get_calendar(client, "2026-10")
+    december = get_calendar(client, "2026-12")
+
+    assert highlighted_dates(october) == ["2026-10-03", "2026-10-04"]
+    assert weekday_column(october, "2026-10-04") == 0  # Dom
+    assert weekday_column(october, "2026-10-03") == 6  # Sáb
+    assert highlighted_dates(december) == ["2026-12-31"]
+    assert weekday_column(december, "2026-12-31") == 4  # Qui
+    assert highlighted_dates(get_calendar(client, "2027-01")) == ["2027-01-02"]
 
 
 # Navigation
@@ -231,7 +301,8 @@ def test_workout_names_with_html_are_escaped_in_the_calendar(client, session):
 
 
 def test_calendar_script_copies_escaped_cards_and_closes_like_other_modals(client):
-    script = client.get("/static/js/workouts.js").get_data(as_text=True)
+    with client.get("/static/js/workouts.js") as response:
+        script = response.get_data(as_text=True)
 
     assert "template.content.cloneNode(true)" in script
     assert "label.textContent = button.dataset.dayLabel" in script

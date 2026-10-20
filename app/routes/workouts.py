@@ -9,7 +9,7 @@ from sqlalchemy.orm import joinedload, selectinload
 
 from app.database import db
 from app.exercise_library import group_exercises
-from app.models import SQLITE_MAX_INTEGER, Exercise, Workout, WorkoutExercise, WorkoutSet, utc_now
+from app.models import SQLITE_MAX_INTEGER, Exercise, Workout, WorkoutExercise, WorkoutSet, WorkoutTemplate, utc_now
 
 
 bp = Blueprint("workouts", __name__, url_prefix="/workouts")
@@ -28,12 +28,17 @@ MONTH_NAMES = (
     "Novembro",
     "Dezembro",
 )
-WEEKDAY_NAMES = ("Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom")
+# The calendar weeks start on Sunday and end on Saturday.
+WEEKDAY_NAMES = ("Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb")
 
 SET_VALIDATION_ERROR = "Informe repetições positivas e um peso válido com até duas casas decimais."
 COMPLETED_WORKOUT_ERROR = "Este treino já foi concluído e não pode mais ser alterado."
 COMPLETION_REQUIREMENT_ERROR = "Registre pelo menos uma série em algum exercício antes de concluir o treino."
 DUPLICATE_EXERCISE_ERROR = "Este exercício já foi adicionado ao treino."
+REORDER_ERROR = "A ordem enviada não corresponde aos exercícios do treino. Recarregue a página e tente novamente."
+WORKOUT_FORM_ERROR = "Informe uma data válida e um nome para o treino."
+WORKOUT_DATE_ERROR = "Informe uma data válida."
+WORKOUT_NAME_ERROR = "Informe um nome para o treino."
 
 
 @bp.get("")
@@ -55,18 +60,27 @@ def list_workouts():
     for workout in workouts:
         workouts_by_day.setdefault(workout.date, []).append(workout)
 
+    # Template cards below the calendar: each opens the template's overview,
+    # where the session is started. Alphabetical, like the rest of the app.
+    templates = db.session.scalars(
+        select(WorkoutTemplate)
+        .options(selectinload(WorkoutTemplate.template_exercises))
+        .order_by(func.lower(WorkoutTemplate.name), WorkoutTemplate.id)
+    ).all()
+
     return render_template(
         "workouts/list.html",
         month=month,
         month_title=f"{MONTH_NAMES[month.month - 1]} {month.year}",
-        # Weeks start on Monday and include the days of the adjacent months
+        # Weeks start on Sunday and include the days of the adjacent months
         # needed to complete the first and last weeks.
-        weeks=calendar.Calendar(firstweekday=calendar.MONDAY).monthdatescalendar(month.year, month.month),
+        weeks=calendar.Calendar(firstweekday=calendar.SUNDAY).monthdatescalendar(month.year, month.month),
         weekday_names=WEEKDAY_NAMES,
         workouts_by_day=workouts_by_day,
         previous_month_param=_month_param(previous_month),
         next_month_param=_month_param(next_month),
         is_current_month=month == current_month,
+        templates=templates,
     )
 
 
@@ -97,21 +111,54 @@ def edit_workout(workout_id):
 
 @bp.post("/<int:workout_id>/edit")
 def update_workout(workout_id):
-    workout = _lock_in_progress_workout_or_404(workout_id)
-    form_date, form_name = _form_values()
+    """Change the name and/or the date of a session in progress.
 
-    try:
-        workout.date = _parse_date(form_date)
-        workout.name = form_name
-        db.session.commit()
-    except ValueError:
+    The edit page sends both fields. The workout page changes one at a time
+    with fetch() (the name or the date, clicked in its header), so a field
+    that is not sent keeps its value. Only this session changes: its template
+    and the other sessions are never touched.
+    """
+    workout = _lock_in_progress_workout_or_404(workout_id)
+    form_date = request.form.get("date")
+    form_name = request.form.get("name")
+
+    errors = []
+    if form_date is None and form_name is None:
+        errors.append(WORKOUT_FORM_ERROR)
+    if form_date is not None:
+        try:
+            workout.date = _parse_date(form_date)
+        except ValueError:
+            errors.append(WORKOUT_DATE_ERROR)
+    if form_name is not None:
+        try:
+            workout.name = form_name
+        except ValueError:
+            errors.append(WORKOUT_NAME_ERROR)
+
+    if errors:
         db.session.rollback()
+        if _wants_json():
+            return jsonify({"error": " ".join(errors)}), 400
         return _render_form_with_error(
             workout=workout,
-            form_date=form_date,
-            form_name=form_name,
+            form_date=form_date if form_date is not None else workout.date.isoformat(),
+            form_name=form_name if form_name is not None else workout.name,
         )
 
+    db.session.commit()
+    if _wants_json():
+        changed = "Nome e data atualizados." if form_date is not None and form_name is not None else (
+            "Data atualizada." if form_date is not None else "Nome atualizado."
+        )
+        return jsonify(
+            {
+                "message": changed,
+                "name": workout.name,
+                "date": workout.date.isoformat(),
+                "date_label": workout.date.strftime("%d/%m/%Y"),
+            }
+        )
     flash("Treino atualizado com sucesso.", "success")
     return redirect(url_for("workouts.workout_detail", workout_id=workout.id))
 
@@ -240,41 +287,44 @@ def delete_workout_exercise(workout_id, exercise_id):
     return redirect(url_for("workouts.workout_detail", workout_id=workout_id))
 
 
-@bp.post("/<int:workout_id>/exercises/<int:exercise_id>/move-up")
-def move_workout_exercise_up(workout_id, exercise_id):
+@bp.post("/<int:workout_id>/exercises/reorder")
+def reorder_workout_exercises(workout_id):
+    """Save a new order of the session's exercises (drag and drop on the page).
+
+    The page sends every workout exercise id of the session, in the new order.
+    A missing, unknown or repeated id means the page is out of date, and the
+    order is left as it was.
+    """
     workout = _lock_in_progress_workout_or_404(workout_id)
-    workout_exercise = _get_workout_exercise_or_404(workout_id, exercise_id)
-    previous_exercise = db.session.scalar(
-        select(WorkoutExercise).where(
-            WorkoutExercise.workout_id == workout_id,
-            WorkoutExercise.position == workout_exercise.position - 1,
-        )
-    )
-    if previous_exercise is not None:
-        _swap_positions(workout_exercise, previous_exercise, workout_id)
-        db.session.commit()
+    workout_exercises = db.session.scalars(
+        select(WorkoutExercise).where(WorkoutExercise.workout_id == workout_id)
+    ).all()
+    by_id = {workout_exercise.id: workout_exercise for workout_exercise in workout_exercises}
+    try:
+        new_order = [int(value) for value in request.form.getlist("workout_exercise_ids")]
+    except ValueError:
+        new_order = None
+    if new_order is None or len(new_order) != len(by_id) or set(new_order) != set(by_id):
+        # Nothing was changed; this also ends the transaction that holds the session.
+        db.session.rollback()
+        if _wants_json():
+            return jsonify({"error": REORDER_ERROR}), 400
+        flash(REORDER_ERROR, "error")
+        return redirect(url_for("workouts.workout_detail", workout_id=workout_id))
+
+    # Positions are unique within a session, so they are first moved above
+    # the current ones and only then set to 1..n.
+    highest_position = max((item.position for item in workout_exercises), default=0)
+    for index, workout_exercise_id in enumerate(new_order, start=1):
+        by_id[workout_exercise_id].position = highest_position + index
+    db.session.flush()
+    for index, workout_exercise_id in enumerate(new_order, start=1):
+        by_id[workout_exercise_id].position = index
+    db.session.commit()
 
     if _wants_json():
         return _exercises_json_response(workout, "Ordem dos exercícios atualizada.")
-    return redirect(url_for("workouts.workout_detail", workout_id=workout_id))
-
-
-@bp.post("/<int:workout_id>/exercises/<int:exercise_id>/move-down")
-def move_workout_exercise_down(workout_id, exercise_id):
-    workout = _lock_in_progress_workout_or_404(workout_id)
-    workout_exercise = _get_workout_exercise_or_404(workout_id, exercise_id)
-    next_exercise = db.session.scalar(
-        select(WorkoutExercise).where(
-            WorkoutExercise.workout_id == workout_id,
-            WorkoutExercise.position == workout_exercise.position + 1,
-        )
-    )
-    if next_exercise is not None:
-        _swap_positions(workout_exercise, next_exercise, workout_id)
-        db.session.commit()
-
-    if _wants_json():
-        return _exercises_json_response(workout, "Ordem dos exercícios atualizada.")
+    flash("Ordem dos exercícios atualizada.", "success")
     return redirect(url_for("workouts.workout_detail", workout_id=workout_id))
 
 
@@ -495,22 +545,6 @@ def _workout_exercises(workout_id):
     ).all()
 
 
-def _swap_positions(workout_exercise, neighbor_exercise, workout_id):
-    original_position = workout_exercise.position
-    neighbor_original_position = neighbor_exercise.position
-    last_position = db.session.scalar(
-        select(func.max(WorkoutExercise.position)).where(
-            WorkoutExercise.workout_id == workout_id
-        )
-    )
-
-    workout_exercise.position = (last_position or 0) + 1
-    db.session.flush()
-    neighbor_exercise.position = original_position
-    db.session.flush()
-    workout_exercise.position = neighbor_original_position
-
-
 def _render_workout_detail(
     workout,
     set_error=None,
@@ -572,6 +606,10 @@ def _sets_json_response(workout, workout_exercise, message):
                 failed_workout_exercise_id=None,
             ),
             "total_sets": total_sets,
+            # The card header shows the recorded sets against the target.
+            "progress_html": render_template(
+                "partials/exercise_progress.html", workout_exercise=workout_exercise
+            ),
         }
     )
 
@@ -583,9 +621,9 @@ def _set_error_json(message):
 def _exercises_json_response(workout, message, added_workout_exercise_id=None):
     """Return the re-rendered exercise list after an exercise is added, removed or moved.
 
-    The whole list is returned because these changes renumber positions and
-    change which exercises show ↑ and ↓. The HTML comes from the same template
-    used by the full page.
+    The whole list is returned because these changes renumber the positions
+    shown in every card. The HTML comes from the same template used by the
+    full page.
     """
     # Reload from the database so the list shows the order and positions as stored.
     db.session.expire_all()
@@ -638,10 +676,6 @@ def _render_set_form_with_error(
     ), 200
 
 
-def _form_values():
-    return request.form.get("date", ""), request.form.get("name", "")
-
-
 def _parse_month(value):
     """Parse ?month=YYYY-MM. Invalid values return None (the current month is shown)."""
     if not value:
@@ -672,5 +706,5 @@ def _render_form_with_error(workout, form_date, form_name):
         workout=workout,
         form_date=form_date,
         form_name=form_name,
-        error="Informe uma data válida e um nome para o treino.",
+        error=WORKOUT_FORM_ERROR,
     ), 200

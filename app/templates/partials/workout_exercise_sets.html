@@ -12,9 +12,11 @@
 {% set add_set_failed = set_error and failed_workout_exercise_id == workout_exercise.id %}
 {#
   The add-set form starts with the previous set's values because sets of the
-  same exercise usually repeat them; after a failed submission it shows what
-  the user typed instead.
+  same exercise usually repeat them (the first set starts with the target
+  repetitions, when there is a target); after a failed submission it shows
+  what the user typed instead.
 #}
+{% set target_repetitions = workout_exercise.target_repetitions %}
 {% if add_set_failed %}
   {% set default_repetitions = set_form_values.get('repetitions', '') %}
   {% set default_weight_kg = set_form_values.get('weight_kg', '') %}
@@ -22,7 +24,7 @@
   {% set default_repetitions = (ordered_sets|last).repetitions %}
   {% set default_weight_kg = (ordered_sets|last).weight_kg %}
 {% else %}
-  {% set default_repetitions = '' %}
+  {% set default_repetitions = target_repetitions if target_repetitions is not none else '' %}
   {% set default_weight_kg = '' %}
 {% endif %}
 
@@ -35,6 +37,10 @@
           <tr>
             <th scope="col">Série</th>
             <th scope="col" class="numeric">Repetições</th>
+            {% if target_repetitions is not none %}
+              {# The target is a reference only, the same for every set. #}
+              <th scope="col" class="numeric">Meta</th>
+            {% endif %}
             <th scope="col" class="numeric">Peso</th>
             {% if not workout.is_completed %}
               <th scope="col" class="row-actions"><span class="visually-hidden">Ações</span></th>
@@ -46,6 +52,9 @@
             <tr id="set-{{ workout_set.id }}">
               <td class="set-position">{{ workout_set.position }}</td>
               <td class="set-repetitions numeric">{{ workout_set.repetitions }}</td>
+              {% if target_repetitions is not none %}
+                <td class="set-target numeric">{{ target_repetitions }}</td>
+              {% endif %}
               <td class="set-weight numeric">{{ workout_set.weight_kg }} kg</td>
               {% if not workout.is_completed %}
               <td class="row-actions">
@@ -72,7 +81,7 @@
             </tr>
             {% if not workout.is_completed %}
             <tr class="set-edit-row" id="set-{{ workout_set.id }}-edit" hidden>
-              <td colspan="4">
+              <td colspan="{{ 5 if target_repetitions is not none else 4 }}">
                 <form class="set-edit-form" action="{{ url_for('workouts.update_workout_set', workout_id=workout.id, exercise_id=workout_exercise.exercise_id, set_id=workout_set.id) }}" method="post" data-set-form>
                   <span class="set-edit-label">Série {{ workout_set.position }}</span>
                   <div class="form-field">
@@ -104,7 +113,7 @@
     {% endif %}
     <form class="add-set-form" action="{{ url_for('workouts.add_workout_set', workout_id=workout.id, exercise_id=workout_exercise.exercise_id) }}" method="post" data-set-form>
       <div class="form-field">
-        <label for="repetitions-{{ workout_exercise.id }}">Repetições</label>
+        <label for="repetitions-{{ workout_exercise.id }}">Repetições{% if target_repetitions is not none %} <span class="label-hint">(meta {{ target_repetitions }})</span>{% endif %}</label>
         <input id="repetitions-{{ workout_exercise.id }}" name="repetitions" type="number" min="1" inputmode="numeric" value="{{ default_repetitions }}" required>
       </div>
       <div class="form-field">

@@ -6,9 +6,8 @@
   <header class="page-header">
     <h1>Treinos</h1>
     <div class="actions">
-      {# Sessions start from a template; "Novo treino" builds a new template. #}
-      <a class="btn btn-secondary" href="{{ url_for('workout_templates.new_template') }}">Novo treino</a>
-      <a class="btn btn-primary" href="{{ url_for('workout_templates.list_templates') }}">Iniciar treino</a>
+      {# Sessions are started from a template's overview (cards below the calendar). #}
+      <a class="btn btn-primary" href="{{ url_for('workout_templates.new_template') }}">Novo modelo</a>
     </div>
   </header>
 
@@ -86,6 +85,33 @@
         {% endfor %}
       </tbody>
     </table>
+  </section>
+
+  {# Templates: each card opens the overview, where the session is started. #}
+  <section class="section" id="modelos" aria-labelledby="templates-title">
+    <div class="section-header">
+      <h2 id="templates-title">Modelos de treino</h2>
+    </div>
+    {% if templates %}
+      <p class="muted section-intro">Escolha um modelo para ver os exercícios e iniciar o treino.</p>
+      <ul class="card-grid" aria-label="Modelos de treino">
+        {% for template in templates %}
+          {% set exercise_count = template.template_exercises|length %}
+          <li>
+            <a class="library-card template-link-card" href="{{ url_for('workout_templates.template_overview', template_id=template.id) }}">
+              <span class="library-card-title">{{ template.name }}</span>
+              <span class="library-card-detail">{{ exercise_count }} {{ 'exercício' if exercise_count == 1 else 'exercícios' }}</span>
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <div class="panel empty-state">
+        <p>Nenhum modelo de treino criado.</p>
+        <p class="muted">Crie um modelo com os exercícios de um treino para iniciá-lo sempre que quiser.</p>
+        <p><a class="btn btn-primary" href="{{ url_for('workout_templates.new_template') }}">Criar modelo</a></p>
+      </div>
+    {% endif %}
   </section>
 
   <dialog class="modal modal-small" id="day-workouts-dialog" aria-labelledby="day-workouts-title">

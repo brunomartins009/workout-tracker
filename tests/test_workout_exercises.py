@@ -190,16 +190,21 @@ def test_removing_exercise_from_one_workout_does_not_affect_another(client, sess
     ]
 
 
-def test_moving_exercise_up_swaps_positions(client, session):
+def reorder(client, workout, workout_exercise_ids):
+    return client.post(
+        f"/workouts/{workout.id}/exercises/reorder",
+        data={"workout_exercise_ids": [str(item_id) for item_id in workout_exercise_ids]},
+    )
+
+
+def test_reordering_moves_an_exercise_up(client, session):
     workout = create_workout(session)
     first = create_exercise(session, "Supino")
     second = create_exercise(session, "Crucifixo")
-    add_exercise(session, workout, first, 1)
-    add_exercise(session, workout, second, 2)
+    first_item = add_exercise(session, workout, first, 1)
+    second_item = add_exercise(session, workout, second, 2)
 
-    response = client.post(
-        f"/workouts/{workout.id}/exercises/{second.id}/move-up"
-    )
+    response = reorder(client, workout, [second_item.id, first_item.id])
 
     assert response.status_code == 302
     assert [(item.exercise_id, item.position) for item in workout_exercises(session, workout)] == [
@@ -208,35 +213,40 @@ def test_moving_exercise_up_swaps_positions(client, session):
     ]
 
 
-def test_moving_exercise_down_swaps_positions(client, session):
+def test_reordering_moves_an_exercise_to_any_position(client, session):
+    # Drag and drop can move an exercise several places at once.
     workout = create_workout(session)
-    first = create_exercise(session, "Supino")
-    second = create_exercise(session, "Crucifixo")
-    add_exercise(session, workout, first, 1)
-    add_exercise(session, workout, second, 2)
+    exercises = [create_exercise(session, name) for name in ("Supino", "Crucifixo", "Remada", "Rosca")]
+    items = [add_exercise(session, workout, exercise, position) for position, exercise in enumerate(exercises, start=1)]
 
-    response = client.post(
-        f"/workouts/{workout.id}/exercises/{first.id}/move-down"
-    )
+    response = reorder(client, workout, [items[1].id, items[2].id, items[3].id, items[0].id])
 
     assert response.status_code == 302
     assert [(item.exercise_id, item.position) for item in workout_exercises(session, workout)] == [
-        (second.id, 1),
-        (first.id, 2),
+        (exercises[1].id, 1),
+        (exercises[2].id, 2),
+        (exercises[3].id, 3),
+        (exercises[0].id, 4),
     ]
 
 
-def test_first_and_last_exercises_do_not_offer_invalid_move_actions(client, session):
-    workout = create_workout(session)
+def test_drag_handles_are_offered_only_when_there_is_something_to_reorder(client, session):
+    single = create_workout(session, "Treino A")
+    several = create_workout(session, "Treino B")
     first = create_exercise(session, "Supino")
     last = create_exercise(session, "Crucifixo")
-    add_exercise(session, workout, first, 1)
-    add_exercise(session, workout, last, 2)
+    add_exercise(session, single, first, 1)
+    add_exercise(session, several, first, 1)
+    add_exercise(session, several, last, 2)
 
-    page = client.get(f"/workouts/{workout.id}").get_data(as_text=True)
+    single_page = client.get(f"/workouts/{single.id}").get_data(as_text=True)
+    several_page = client.get(f"/workouts/{several.id}").get_data(as_text=True)
 
-    assert f"/exercises/{first.id}/move-up" not in page
-    assert f"/exercises/{last.id}/move-down" not in page
+    assert "data-drag-handle" not in single_page
+    assert "data-sortable-exercises" not in single_page
+    assert several_page.count("data-drag-handle") == 2
+    # The arrows were replaced by the drag handle.
+    assert "/move-up" not in several_page and "/move-down" not in several_page
 
 
 def test_reordering_one_workout_does_not_affect_another(client, session):
@@ -244,13 +254,11 @@ def test_reordering_one_workout_does_not_affect_another(client, session):
     workout_b = create_workout(session, "Treino B")
     first = create_exercise(session, "Supino")
     second = create_exercise(session, "Crucifixo")
-    add_exercise(session, workout_a, first, 1)
-    add_exercise(session, workout_a, second, 2)
+    first_item = add_exercise(session, workout_a, first, 1)
+    second_item = add_exercise(session, workout_a, second, 2)
     add_exercise(session, workout_b, first, 1)
 
-    response = client.post(
-        f"/workouts/{workout_a.id}/exercises/{second.id}/move-up"
-    )
+    response = reorder(client, workout_a, [second_item.id, first_item.id])
 
     assert response.status_code == 302
     assert [(item.exercise_id, item.position) for item in workout_exercises(session, workout_a)] == [

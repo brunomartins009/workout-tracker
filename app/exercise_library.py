@@ -27,6 +27,7 @@ EXERCISES = [
     # Abdômen
     {"name": "Abdominal curto", "muscle_group": "Abdômen", "muscle_subgroup": "Reto abdominal"},
     {"name": "Abdominal infra", "muscle_group": "Abdômen", "muscle_subgroup": "Reto abdominal"},
+    {"name": "Abdominal infra na paralela", "muscle_group": "Abdômen", "muscle_subgroup": "Reto abdominal"},
     {"name": "Abdominal oblíquo", "muscle_group": "Abdômen", "muscle_subgroup": "Oblíquos"},
     {"name": "Prancha", "muscle_group": "Abdômen", "muscle_subgroup": "Reto abdominal"},
     # Braços

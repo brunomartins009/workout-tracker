@@ -56,7 +56,7 @@ def stored_sets(session):
         ("post", "/workouts/{big}/complete"),
         ("post", "/workouts/{big}/delete"),
         ("post", "/workouts/{workout_id}/exercises/{big}/delete"),
-        ("post", "/workouts/{workout_id}/exercises/{big}/move-up"),
+        ("post", "/workouts/{big}/exercises/reorder"),
         ("post", "/workouts/{workout_id}/exercises/{exercise_id}/sets/{big}/delete"),
         ("get", "/exercises/{big}/history"),
         ("post", "/templates/{big}/start"),

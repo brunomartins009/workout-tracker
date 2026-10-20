@@ -68,7 +68,7 @@ def completed(client, session):
     fly = create_exercise(session, "Crucifixo")
     row = create_exercise(session, "Remada")
     bench_item = add_exercise(session, workout, bench, 1, sets=[(10, "20"), (8, "22.5")])
-    add_exercise(session, workout, fly, 2, sets=[(12, "10")])
+    fly_item = add_exercise(session, workout, fly, 2, sets=[(12, "10")])
 
     response = client.post(f"/workouts/{workout.id}/complete")
     assert response.status_code == 302
@@ -81,6 +81,8 @@ def completed(client, session):
         "fly_id": fly.id,
         "row_id": row.id,
         "set_id": bench_item.sets[0].id,
+        "bench_item_id": bench_item.id,
+        "fly_item_id": fly_item.id,
     }
 
 
@@ -171,8 +173,7 @@ MUTATING_REQUESTS = {
     "edit name and date": ("post", "/workouts/{workout_id}/edit", {"date": "2026-10-20", "name": "Outro nome"}),
     "add exercise": ("post", "/workouts/{workout_id}/exercises", {"exercise_id": "{row_id}"}),
     "remove exercise": ("post", "/workouts/{workout_id}/exercises/{bench_id}/delete", None),
-    "move exercise up": ("post", "/workouts/{workout_id}/exercises/{fly_id}/move-up", None),
-    "move exercise down": ("post", "/workouts/{workout_id}/exercises/{bench_id}/move-down", None),
+    "reorder exercises": ("post", "/workouts/{workout_id}/exercises/reorder", {"workout_exercise_ids": ["{fly_item_id}", "{bench_item_id}"]}),
     "add set": ("post", "/workouts/{workout_id}/exercises/{bench_id}/sets", {"repetitions": "5", "weight_kg": "30"}),
     "set edit form": ("get", "/workouts/{workout_id}/exercises/{bench_id}/sets/{set_id}/edit", None),
     "edit set": ("post", "/workouts/{workout_id}/exercises/{bench_id}/sets/{set_id}/edit", {"repetitions": "1", "weight_kg": "99"}),
@@ -180,10 +181,18 @@ MUTATING_REQUESTS = {
 }
 
 
+def fill_form(data, values):
+    """Form data with {placeholders} replaced; a list sends several values."""
+    return {
+        key: [item.format(**values) for item in value] if isinstance(value, list) else value.format(**values)
+        for key, value in data.items()
+    }
+
+
 def send(client, completed, request_name, headers=None):
     method, url, data = MUTATING_REQUESTS[request_name]
     if data is not None:
-        data = {key: value.format(**completed) for key, value in data.items()}
+        data = fill_form(data, completed)
     return getattr(client, method)(url.format(**completed), data=data, headers=headers)
 
 

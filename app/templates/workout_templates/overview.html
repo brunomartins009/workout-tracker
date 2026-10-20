@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{#
+  A template before starting it: name, exercises in order and their targets.
+  Viewing never changes anything: starting a session, editing and deleting are
+  explicit buttons, and deleting asks for confirmation.
+#}
+
+{% block title %}{{ template.name }} | Workout Tracker{% endblock %}
+
+{% block content %}
+  {% set exercise_count = template.template_exercises|length %}
+  <a class="back-link" href="{{ url_for('workouts.list_workouts', _anchor='modelos') }}">← Treinos</a>
+  <header class="page-header">
+    <div>
+      <h1>{{ template.name }}</h1>
+      <p class="page-subtitle">Modelo de treino · {{ exercise_count }} {{ 'exercício' if exercise_count == 1 else 'exercícios' }}</p>
+    </div>
+    <div class="actions overview-actions">
+      <a class="btn btn-secondary" href="{{ url_for('workout_templates.edit_template', template_id=template.id) }}">Editar modelo</a>
+      {# Without JavaScript the form submits directly; workouts.js asks for confirmation first. #}
+      <form
+        class="inline-form"
+        action="{{ url_for('workout_templates.delete_template', template_id=template.id) }}"
+        method="post"
+        data-confirm-dialog="delete-template-dialog"
+        data-confirm-name="{{ template.name }}"
+      >
+        <button class="btn btn-danger" type="submit">Excluir modelo</button>
+      </form>
+      {# Last in the row (top right); first and full width on small screens. #}
+      <form class="inline-form overview-start" action="{{ url_for('workout_templates.start_workout', template_id=template.id) }}" method="post" data-submit-once>
+        <button class="btn btn-primary" type="submit">Iniciar treino</button>
+      </form>
+    </div>
+  </header>
+
+  <section class="panel panel-body" aria-labelledby="template-exercises-title">
+    <h2 id="template-exercises-title">Exercícios</h2>
+    <ol class="template-overview-list">
+      {% for item in template.template_exercises %}
+        <li class="template-overview-item">
+          <span class="position-badge" aria-hidden="true">{{ item.position }}</span>
+          <span class="template-overview-text">
+            <span class="template-overview-name">{{ item.exercise.name }}</span>
+            <span class="template-overview-muscles">{{ item.exercise.muscle_group }} / {{ item.exercise.muscle_subgroup }}</span>
+          </span>
+          {% if item.target_sets is not none and item.target_repetitions is not none %}
+            <span class="target-summary">
+              <strong>{{ item.target_sets }} {{ 'série' if item.target_sets == 1 else 'séries' }}</strong>
+              × {{ item.target_repetitions }} {{ 'repetição' if item.target_repetitions == 1 else 'repetições' }}
+            </span>
+          {% else %}
+            {# Saved before targets existed; they can be set by editing the template. #}
+            <span class="target-summary target-summary-missing">Sem meta definida</span>
+          {% endif %}
+        </li>
+      {% endfor %}
+    </ol>
+    <p class="form-hint">As metas são uma referência: durante o treino você registra quantas séries e repetições quiser.</p>
+  </section>
+
+  <dialog class="modal modal-small" id="delete-template-dialog" aria-labelledby="delete-template-title">
+    <div class="modal-content">
+      <header class="modal-header">
+        <h2 id="delete-template-title">Excluir modelo?</h2>
+        <button class="modal-close" type="button" data-confirm-close aria-label="Fechar">×</button>
+      </header>
+      <div class="modal-body">
+        <p>O modelo “<span data-confirm-name></span>” será excluído. Os treinos já iniciados a partir dele não são afetados.</p>
+        <div class="form-actions">
+          <button class="btn btn-danger" type="button" data-confirm-accept>Excluir modelo</button>
+          <button class="btn btn-secondary" type="button" data-confirm-close>Cancelar</button>
+        </div>
+      </div>
+    </div>
+  </dialog>
+{% endblock %}
+
+{% block scripts %}
+  <script src="{{ url_for('static', filename='js/workouts.js') }}"></script>
+{% endblock %}

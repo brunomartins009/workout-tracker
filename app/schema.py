@@ -20,7 +20,16 @@ Alembic instead of growing into one.
 
 from sqlalchemy import inspect, text
 
-from app.models import UNCLASSIFIED
+from app.database import Base
+from app.models import TARGET_REPETITIONS_MAX, TARGET_SETS_MAX, UNCLASSIFIED, target_range_check
+
+
+def _target_column(table_constraint_prefix, column, maximum):
+    """Definition of a target column, with the same named CHECK as the model."""
+    return (
+        f"INTEGER CONSTRAINT {table_constraint_prefix}_{column}_range "
+        f"CHECK ({target_range_check(column, maximum)})"
+    )
 
 
 # (table, column, column definition used by ALTER TABLE ... ADD COLUMN,
@@ -35,7 +44,55 @@ COLUMN_UPGRADES = [
     # time. Sessions created afterwards start with NULL (in progress), and this
     # backfill never runs again because the column then already exists.
     ("workouts", "completed_at", "DATETIME", "UPDATE workouts SET completed_at = updated_at"),
+    # Targets of sets and repetitions. Existing template exercises and session
+    # exercises get NULL (no target): nothing is invented for older data.
+    (
+        "workout_template_exercises",
+        "target_sets",
+        _target_column("ck_workout_template_exercise", "target_sets", TARGET_SETS_MAX),
+        None,
+    ),
+    (
+        "workout_template_exercises",
+        "target_repetitions",
+        _target_column("ck_workout_template_exercise", "target_repetitions", TARGET_REPETITIONS_MAX),
+        None,
+    ),
+    (
+        "workout_exercises",
+        "target_sets",
+        _target_column("ck_workout_exercise", "target_sets", TARGET_SETS_MAX),
+        None,
+    ),
+    (
+        "workout_exercises",
+        "target_repetitions",
+        _target_column("ck_workout_exercise", "target_repetitions", TARGET_REPETITIONS_MAX),
+        None,
+    ),
 ]
+
+
+def pending_schema_changes(engine):
+    """What `create_all()` and `upgrade_schema()` would add to an existing database.
+
+    Returns descriptions such as "column workouts.completed_at" (names from the
+    schema only, never data). Empty when the database is up to date, and for a
+    new database without tables: there is nothing in it to protect yet.
+    """
+    inspector = inspect(engine)
+    existing_tables = set(inspector.get_table_names())
+    if not existing_tables:
+        return []
+
+    changes = [f"table {table.name}" for table in Base.metadata.sorted_tables if table.name not in existing_tables]
+    for table, column, _definition, _backfill in COLUMN_UPGRADES:
+        # A missing table is created by create_all() with all its columns.
+        if table in existing_tables and column not in {
+            existing_column["name"] for existing_column in inspector.get_columns(table)
+        }:
+            changes.append(f"column {table}.{column}")
+    return changes
 
 
 def upgrade_schema(engine):
